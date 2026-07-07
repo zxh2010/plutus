@@ -84,18 +84,31 @@ def load(path: str = "config.toml") -> dict:
     if os.path.exists(_GMAIL_AUTH_FILE):
         try:
             ui = json.loads(Path(_GMAIL_AUTH_FILE).read_text(encoding="utf-8"))
-            if ui.get("email"):
-                gmail["email"] = ui["email"].strip()
-            if ui.get("app_password"):
-                gmail["app_password"] = ui["app_password"].strip()
-            # The current settings UI writes Gmail-only credentials. Do not let
-            # that local file override an explicit domestic provider such as QQ
-            # or 163; future UI work will save provider-aware credentials.
-            if (mail.get("provider") or "gmail") == "gmail":
+            ui_provider = (ui.get("provider") or "").strip()
+            if ui_provider:
+                mail["provider"] = ui_provider
                 if ui.get("email"):
                     mail["email"] = ui["email"].strip()
                 if ui.get("app_password"):
                     mail["app_password"] = ui["app_password"].strip()
+                if ui_provider == "gmail":
+                    if ui.get("email"):
+                        gmail["email"] = ui["email"].strip()
+                    if ui.get("app_password"):
+                        gmail["app_password"] = ui["app_password"].strip()
+            else:
+                if ui.get("email"):
+                    gmail["email"] = ui["email"].strip()
+                if ui.get("app_password"):
+                    gmail["app_password"] = ui["app_password"].strip()
+                # The current settings UI writes Gmail-only credentials. Do not
+                # let that local file override an explicit domestic provider
+                # such as QQ or 163; provider-aware UI writes provider above.
+                if (mail.get("provider") or "gmail") == "gmail":
+                    if ui.get("email"):
+                        mail["email"] = ui["email"].strip()
+                    if ui.get("app_password"):
+                        mail["app_password"] = ui["app_password"].strip()
         except (ValueError, OSError):
             pass
     return cfg

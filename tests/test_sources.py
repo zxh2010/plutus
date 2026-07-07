@@ -197,6 +197,61 @@ def test_debit_email_self_check_uses_only_debit_sender():
     assert "ccsvc@message.cmbchina.com" not in fake_imap.query
 
 
+def test_mail_self_check_supports_domestic_provider():
+    old_cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.chdir(tmp)
+            Path("config.toml").write_text(
+                '[mail]\nprovider = "qq"\nemail = "u@qq.com"\napp_password = "pw"\n'
+                '[db]\npath = "test.db"\n[web]\nport = 8973\n',
+                encoding="utf-8",
+            )
+            conn = sqlite3.connect("test.db")
+            conn.execute("CREATE TABLE sync_state (k TEXT PRIMARY KEY, v TEXT)")
+            conn.commit()
+            conn.close()
+
+            from plutus.web import server
+
+            class FakeIMAP:
+                _plutus_provider = "qq"
+
+                def __init__(self):
+                    self.calls = []
+
+                def uid(self, command, charset, *criteria):
+                    self.calls.append(criteria)
+                    return "OK", [b"8 9"]
+
+                def logout(self):
+                    return None
+
+            fake_imap = FakeIMAP()
+            original_connect = server.gmail_client.connect
+            server.gmail_client.connect = lambda cfg: fake_imap
+            try:
+                result = server._mail_self_check("debit", "cmb")
+            finally:
+                server.gmail_client.connect = original_connect
+        finally:
+            os.chdir(old_cwd)
+
+    assert result["ok"] is True
+    assert result["provider"] == "qq"
+    assert result["provider_label"] == "QQ 邮箱"
+    assert len(fake_imap.calls) == 1
+    assert fake_imap.calls[0][0] == "SINCE"
+    assert fake_imap.calls[0][2:] == ("FROM", "95555@message.cmbchina.com")
+
+
+def test_mail_provider_options_include_domestic_mailboxes():
+    from plutus.web import server
+
+    keys = {x["key"] for x in server._mail_provider_options()}
+    assert {"gmail", "qq", "163"}.issubset(keys)
+
+
 def test_web_server_exposes_no_sms_self_check():
     from plutus.web import server
 

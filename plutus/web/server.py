@@ -50,11 +50,18 @@ def _run_classify():
         _classify["running"] = False
 
 
-def _gmail_self_check(card_type: str = "credit", bank: str = "cmb") -> dict:
-    """Live read-only probe for the config page: login, resolve + select the
-    All Mail folder (via its \\All flag), and count recent emails from the
-    parser registered for this card/bank pair. Unsupported pairs stop before
-    connecting so another card's parser cannot produce a false positive."""
+def _mail_provider_options() -> list[dict]:
+    return [
+        {"key": key, "label": spec["label"]}
+        for key, spec in gmail_client.PROVIDERS.items()
+    ]
+
+
+def _mail_self_check(card_type: str = "credit", bank: str = "cmb") -> dict:
+    """Live read-only probe for the config page: login, select the provider's
+    mailbox, and count recent emails from the parser registered for this card
+    and bank. Unsupported pairs stop before connecting so another card's parser
+    cannot produce a false positive."""
     import time
     t0 = time.time()
     elapsed = lambda: int((time.time() - t0) * 1000)
@@ -69,17 +76,27 @@ def _gmail_self_check(card_type: str = "credit", bank: str = "cmb") -> dict:
     try:
         # Read config fresh so a just-added app password is picked up without a
         # web restart (the on-page guide says "授权后点重新自检").
-        m = gmail_client.connect(config.load())
+        cfg = config.load()
+        mail = gmail_client._mail_cfg(cfg)
+        m = gmail_client.connect(cfg)
     except Exception as exc:
         return {"ok": False, "error": str(exc), "elapsed_ms": elapsed()}
     try:
-        mailbox = gmail_client.resolve_all_mail(m)
         senders = parser.senders
         q = " OR ".join(f"from:{s}" for s in senders)
-        typ, d = m.uid("search", None, "X-GM-RAW", f'"({q}) newer_than:7d"')
-        recent = len(d[0].split()) if typ == "OK" and d and d[0] else 0
-        return {"ok": True, "mailbox": mailbox, "recent_email_7d": recent,
-                "elapsed_ms": elapsed()}
+        recent = len(gmail_client.search_uids(m, f"({q}) newer_than:7d"))
+        return {
+            "ok": True,
+            "provider": mail["provider"],
+            "provider_label": gmail_client.provider_label(mail["provider"]),
+            "mailbox": (
+                mail.get("mailbox")
+                or gmail_client.PROVIDERS[mail["provider"]]["mailbox"]
+                or gmail_client.ALL_MAIL
+            ),
+            "recent_email_7d": recent,
+            "elapsed_ms": elapsed(),
+        }
     except Exception as exc:
         return {"ok": False, "error": str(exc), "elapsed_ms": elapsed()}
     finally:
@@ -87,6 +104,11 @@ def _gmail_self_check(card_type: str = "credit", bank: str = "cmb") -> dict:
             m.logout()
         except Exception:
             pass
+
+
+def _gmail_self_check(card_type: str = "credit", bank: str = "cmb") -> dict:
+    """Backward-compatible name used by older tests/callers."""
+    return _mail_self_check(card_type, bank)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -189,7 +211,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(_classify)
         if path == "/api/config":
             cfg = config.load()  # fresh, so the page reflects current auth state
-            g = cfg.get("gmail", {})
+            mail = gmail_client._mail_cfg(cfg)
             n = cfg.get("notify", {})
             with _conn() as c:
                 last_credit_email = c.execute(
@@ -222,11 +244,16 @@ class Handler(BaseHTTPRequestHandler):
                 for ct in ("credit", "debit")
             }
             return self._send_json({
-                # credit card via Gmail
-                "gmail_email": g.get("email", ""),
-                "gmail_configured": bool(g.get("email") and g.get("app_password")),
-                "imap_host": g.get("imap_host", "imap.gmail.com"),
-                "mailbox": g.get("mailbox", ""),  # "" => auto-detect via \All
+                # mail collection. gmail_* fields are kept for the current UI.
+                "mail_provider": mail["provider"],
+                "mail_provider_label": gmail_client.provider_label(mail["provider"]),
+                "mail_providers": _mail_provider_options(),
+                "mail_email": mail.get("email", ""),
+                "mail_configured": bool(mail.get("email") and mail.get("app_password")),
+                "gmail_email": mail.get("email", ""),
+                "gmail_configured": bool(mail.get("email") and mail.get("app_password")),
+                "imap_host": mail.get("imap_host", ""),
+                "mailbox": mail.get("mailbox", ""),
                 "proxy": bool(cfg.get("proxy", {}).get("host")),
                 "last_credit_email": last_credit_email,
                 "last_credit_txn": last_credit_txn,
@@ -283,21 +310,28 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(notify.check_wechat(config.load()))
 
         if path == "/api/gmail_auth":
-            # Save the email + app password from the in-page wizard to a gitignored
-            # secrets file (config.load picks it up live), then verify by connecting.
+            # Save the provider + email + app password from the in-page wizard
+            # to a gitignored secrets file (config.load picks it up live), then
+            # verify by connecting. Current UI omits provider, which keeps Gmail.
+            provider = (body.get("provider") or "gmail").strip()
+            if provider not in gmail_client.PROVIDERS:
+                return self._send_json({"ok": False, "error": "不支持的邮箱类型"})
             email = (body.get("email") or "").strip()
             pw = (body.get("app_password") or "").replace(" ", "").strip()
             if not email or not pw:
                 return self._send_json({"ok": False, "error": "邮箱和应用专用密码都要填"})
             Path("secrets").mkdir(exist_ok=True)
             f = Path("secrets/gmail_auth.json")
-            f.write_text(json.dumps({"email": email, "app_password": pw},
-                                    ensure_ascii=False), encoding="utf-8")
+            f.write_text(json.dumps({
+                "provider": provider,
+                "email": email,
+                "app_password": pw,
+            }, ensure_ascii=False), encoding="utf-8")
             try:
                 os.chmod(f, 0o600)
             except OSError:
                 pass
-            return self._send_json({"ok": True, "check": _gmail_self_check()})
+            return self._send_json({"ok": True, "check": _mail_self_check()})
 
         if path == "/api/settings/billing_start_day":
             with _conn() as c:
