@@ -2,7 +2,8 @@
 
 const state = { month: null, months: [], categories: [], view: "ledger",
                billingStartDay: 1,
-               ledger: { card: "", status: "", q: "" } };
+               ledger: { card: "", status: "", q: "" },
+               mailProviderDraft: "" };
 
 // ---- helpers -----------------------------------------------------------
 const $ = (sel) => document.querySelector(sel);
@@ -803,28 +804,59 @@ function _pipeCard(c) {
   </div>`;
 }
 
-// In-page Gmail authorization wizard (credit card, email channel). Steps ②③④ are
-// one-click deep links to Google (no API exists to automate them); ①⑤ are filled
-// here, and "保存并连接" validates all of them at once via a live IMAP connect.
-function _gmailWizard(cfg) {
+// In-page mail authorization wizard. Provider-specific links help the user
+// create an app password / authorization code; "保存并连接" validates via IMAP.
+function _mailHelp(provider) {
+  const help = {
+    gmail: {
+      label: "Google 应用专用密码",
+      url: "https://myaccount.google.com/apppasswords",
+      hint: "16 位应用专用密码",
+      placeholder: "粘贴 16 位应用专用密码",
+    },
+    qq: {
+      label: "QQ 邮箱授权码",
+      url: "https://service.mail.qq.com/detail/0/75",
+      hint: "IMAP/SMTP 授权码",
+      placeholder: "粘贴 QQ 邮箱授权码",
+    },
+    "163": {
+      label: "163 邮箱授权码",
+      url: "https://help.mail.163.com/faqDetail.do?code=d7a5dc8471a84e5f8b63b34c4ef06d3b",
+      hint: "客户端授权码",
+      placeholder: "粘贴 163 邮箱授权码",
+    },
+  };
+  return help[provider] || help.gmail;
+}
+
+function _mailWizard(cfg) {
   const link = (href, label) => `<a class="aw-go" href="${href}" target="_blank" rel="noopener">${label}</a>`;
+  const providers = cfg.mail_providers || [{ key: "gmail", label: "Gmail" }];
+  const active = state.mailProviderDraft || cfg.mail_provider || "gmail";
+  const help = _mailHelp(active);
+  const opts = providers.map((p) =>
+    `<option value="${esc(p.key)}" ${p.key === active ? "selected" : ""}>${esc(p.label)}</option>`).join("");
   return `<div class="aw">
-    <div class="aw-row"><div class="aw-main"><b>填写要采集的 Gmail 邮箱</b>
-      <input id="aw-email" class="aw-input" type="email" placeholder="your@gmail.com" value="${esc(cfg.gmail_email || "")}"></div></div>
-    <div class="aw-row"><div class="aw-main">在 Google 生成 16 位<b>应用专用密码</b></div>
-      ${link("https://myaccount.google.com/apppasswords", "去生成 ↗")}</div>
+    <div class="aw-row"><div class="aw-main"><b>选择接收招行邮件的邮箱类型</b>
+      <select id="aw-provider" class="aw-input">${opts}</select></div></div>
+    <div class="aw-row"><div class="aw-main"><b>填写邮箱地址</b>
+      <input id="aw-email" class="aw-input" type="email" placeholder="your@example.com" value="${esc(cfg.mail_email || cfg.gmail_email || "")}"></div></div>
+    <div class="aw-row"><div class="aw-main">生成该邮箱的<b>${esc(help.label)}</b></div>
+      ${link(help.url, "去查看 ↗")}</div>
     <div class="aw-row"><div class="aw-main"><b>粘贴密码并连接</b>
-      <div class="aw-save"><input id="aw-pw" class="aw-input" type="password" placeholder="粘贴 16 位应用专用密码" autocomplete="off">
+      <div class="aw-save"><input id="aw-pw" class="aw-input" type="password" placeholder="${esc(help.placeholder)}" autocomplete="off">
         <button class="btn" id="aw-save">保存并连接</button></div>
+      <div class="sub">这里填的是${esc(help.hint)}，不是邮箱登录密码。</div>
       <div id="aw-out" class="aw-out"></div></div></div>
   </div>
   <div class="aw-foot">密码只存在本机 <span class="num">secrets/gmail_auth.json</span>（git 忽略），不外发。</div>`;
 }
 
-function _gmailAuthHint(err) {
+function _mailAuthHint(err, provider) {
   const e = String(err);
   if (/AUTHENTICATIONFAILED|Invalid credentials|credential/i.test(e))
-    return "认证失败：请确认填的是 16 位『应用专用密码』(不是登录密码)、邮箱无误、且 Gmail IMAP 已启用。";
+    return `认证失败：请确认填的是${_mailHelp(provider).hint}（不是登录密码）、邮箱无误，且该邮箱已开启 IMAP。`;
   return e;
 }
 
@@ -859,18 +891,20 @@ function _intakeCard(cardType, name, cfg) {
       guide: `邮箱需为具体银行格式注册解析器；当前无法采集「${name}」通知。`,
     });
   }
-  const ready = !!cfg.gmail_configured;
+  const ready = !!cfg.mail_configured || !!cfg.gmail_configured;
+  const providerLabel = cfg.mail_provider_label || "Gmail";
+  const email = cfg.mail_email || cfg.gmail_email || "未配置";
   return Object.assign(base, {
-    sub: `${cardType === "credit" ? "每日信用管家" : "一卡通账户变动通知"} · Gmail` +
-      `<span class="sub"> · ${esc(cfg.gmail_email || "未配置")}</span>`,
+    sub: `${cardType === "credit" ? "每日信用管家" : "一卡通账户变动通知"} · ${esc(providerLabel)}` +
+      `<span class="sub"> · ${esc(email)}</span>`,
     seal: ready ? { cls: "checking", ch: "检" } : { cls: "warn", ch: "待" },
-    auth: ready ? { val: "App 专用密码", state: "checking", lead: "on" }
+    auth: ready ? { val: "邮箱授权码", state: "checking", lead: "on" }
                 : { val: "未授权", state: "warn", lead: "off" },
     conn: ready ? { val: "检测中…", state: "checking" } : { val: "待授权", state: "pending" },
     autoRun: ready,
     guideOpen: !ready,
-    guideSummary: ready ? "更换 Gmail 账号 / 重新授权" : "如何授权 · 3 步页内完成",
-    guide: _gmailWizard(cfg),
+    guideSummary: ready ? "更换邮箱账号 / 重新授权" : "如何授权 · 3 步页内完成",
+    guide: _mailWizard(cfg),
   });
 }
 
@@ -973,22 +1007,33 @@ async function renderConfig() {
     }
   });
 
-  // -- Gmail authorization wizard (credit / email, not yet authorized) ---
+  // -- Mail authorization wizard ----------------------------------------
   const awSave = $("#aw-save");
   if (awSave) awSave.addEventListener("click", async () => {
+    const provider = ($("#aw-provider").value || "gmail").trim();
     const email = ($("#aw-email").value || "").trim();
     const pw = ($("#aw-pw").value || "").trim();
     const out = $("#aw-out");
-    if (!email || !pw) { out.className = "aw-out bad"; out.textContent = "邮箱和应用专用密码都要填"; return; }
+    if (!email || !pw) { out.className = "aw-out bad"; out.textContent = "邮箱和授权码都要填"; return; }
     awSave.disabled = true; out.className = "aw-out"; out.textContent = "保存并连接中…";
     try {
-      const r = await post(`/api/gmail_auth`, { email, app_password: pw });
+      const r = await post(`/api/gmail_auth`, { provider, email, app_password: pw });
       const c = r.check || {};
-      if (r.ok && c.ok) { toast("已连接 Gmail · 授权成功"); renderConfig(); return; }
-      out.className = "aw-out bad"; out.textContent = "✗ " + _gmailAuthHint(c.error || r.error || "保存失败");
+      if (r.ok && c.ok) {
+        state.mailProviderDraft = "";
+        toast(`已连接 ${_mailHelp(provider).label.replace("授权码", "")} · 授权成功`);
+        renderConfig();
+        return;
+      }
+      out.className = "aw-out bad"; out.textContent = "✗ " + _mailAuthHint(c.error || r.error || "保存失败", provider);
     } catch (e) {
       out.className = "aw-out bad"; out.textContent = "✗ " + e.message;
     } finally { awSave.disabled = false; }
+  });
+  const providerSel = $("#aw-provider");
+  if (providerSel) providerSel.addEventListener("change", () => {
+    state.mailProviderDraft = providerSel.value;
+    renderConfig();
   });
 
   // -- Hermes -> WeChat end-to-end delivery check -----------------------
