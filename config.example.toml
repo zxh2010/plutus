@@ -1,19 +1,25 @@
 # Copy to config.toml and fill in. config.toml is git-ignored.
 
-[gmail]
-# Access via IMAP + a Google App Password (no Google Cloud project needed).
-imap_host = "imap.gmail.com"
-imap_port = 993
-email = "your-account@gmail.com"
-# 16-char app password from https://myaccount.google.com/apppasswords
-# Kept in a git-ignored file; never commit it.
-app_password_file = "secrets/app_password.txt"
-# Gmail search syntax, applied over IMAP via X-GM-RAW.
+[mail]
+# Mail provider used to receive CMB transaction emails.
+# Supported values: "qq", "163", "gmail".
+provider = "qq"
+email = "your-account@qq.com"
+# Use the provider's app password / authorization code, not the login password.
+# Keep it in a git-ignored file; never commit it.
+app_password_file = "secrets/mail_auth_code.txt"
 # Initial backfill window; incremental sync then tracks the highest UID.
 query = "from:cmbchina.com newer_than:400d"
 
+# Provider defaults:
+#   qq    -> imap.qq.com:993
+#   163   -> imap.163.com:993
+#   gmail -> imap.gmail.com:993, using Gmail X-GM-RAW search
+#
+# Legacy [gmail] configs are still accepted for existing installs.
+
 [proxy]
-# Optional HTTP CONNECT proxy to tunnel IMAP (Gmail is unreachable/slow direct here).
+# Optional HTTP CONNECT proxy to tunnel IMAP.
 # Leave host = "" to connect directly.
 host = ""
 port = 8118
