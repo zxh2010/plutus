@@ -11,7 +11,7 @@ from typing import Any
 
 # UI-managed mail credentials saved from the settings page; override config.toml
 # so a user can authorize entirely in the browser (see web POST /api/gmail_auth).
-_GMAIL_AUTH_FILE = "secrets/gmail_auth.json"
+_MAIL_AUTH_FILE = "secrets/mail_auth.json"
 
 
 def _load_toml(path: str) -> dict:
@@ -81,9 +81,9 @@ def load(path: str = "config.toml") -> dict:
         mail["app_password"] = Path(mail_pw_file).read_text(encoding="utf-8").strip()
 
     # UI-saved credentials win over config.toml / the password file.
-    if os.path.exists(_GMAIL_AUTH_FILE):
+    if os.path.exists(_MAIL_AUTH_FILE):
         try:
-            ui = json.loads(Path(_GMAIL_AUTH_FILE).read_text(encoding="utf-8"))
+            ui = json.loads(Path(_MAIL_AUTH_FILE).read_text(encoding="utf-8"))
             ui_provider = (ui.get("provider") or "").strip()
             if ui_provider:
                 mail["provider"] = ui_provider

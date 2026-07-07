@@ -73,8 +73,8 @@ SQLite 本地账本
 
 - 邮箱通过 IMAP 只读采集，支持 QQ 邮箱、163 邮箱和 Gmail，并使用消息 ID 和 UID 水位增量去重。
 - Plutus 不上传消费明细，也没有服务器保存用户的交易流水。
-- 采集邮件所需的邮箱授权码只保存在本地 `~/.plutus/secrets/`。
-- Hermes 负责解析借记卡通知、建议交易分类和发送微信通知。
+- 采集邮件所需的邮箱授权码只保存在本地 `~/.plutus/secrets/mail_auth.json`。
+- Plutus 在本地采集和解析邮件；Hermes 负责 AI 分类、微信通知、查询和纠正。
 - SQLite 是账本的唯一事实来源。
 - Web 控制台和 Hermes MCP 通过同一套本地 API 读写账本。
 - 用户在微信中的查询或纠正，由 Hermes 调用 Plutus MCP 写回本地数据库。
@@ -111,6 +111,6 @@ Hermes 会自动：
 http://127.0.0.1:8973/#config
 ```
 
-在本地设置页选择邮箱类型，填写邮箱地址和授权码，再运行邮件自检即可。授权码只保存在 `~/.plutus/secrets/`，无需发送给 Hermes。
+在本地设置页选择邮箱类型，填写邮箱地址和授权码，再运行邮件自检即可。设置页会按 QQ 邮箱、163 邮箱或 Gmail 显示对应授权入口；授权码只保存在 `~/.plutus/secrets/mail_auth.json`，无需发送给 Hermes。
 
 完整安装规则和安全边界见 [`docs/install.md`](docs/install.md)。

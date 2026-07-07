@@ -135,6 +135,7 @@ class Handler(BaseHTTPRequestHandler):
         body = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", ctype)
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -321,7 +322,7 @@ class Handler(BaseHTTPRequestHandler):
             if not email or not pw:
                 return self._send_json({"ok": False, "error": "邮箱和应用专用密码都要填"})
             Path("secrets").mkdir(exist_ok=True)
-            f = Path("secrets/gmail_auth.json")
+            f = Path("secrets/mail_auth.json")
             f.write_text(json.dumps({
                 "provider": provider,
                 "email": email,

@@ -372,6 +372,7 @@ tbody tr:hover { background: #fcfbf6; }
 .set-group::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
 
 .intake-grid, .ledger-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.mail-intake-grid { grid-template-columns: 1fr; }
 
 /* pipeline card */
 .pipe { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px;
@@ -425,6 +426,31 @@ tbody tr:hover { background: #fcfbf6; }
 .check-out { font-size: 12.5px; color: var(--muted); }
 .check-out.ok { color: var(--green); }
 .check-out.bad { color: var(--red); }
+
+/* one connected mailbox intake module */
+.mail-collection { grid-column: 1 / -1; }
+.mail-account-strip { margin-top: 16px; padding: 12px 0 0; border-top: 1px solid var(--rule);
+  display: flex; align-items: baseline;
+  justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.mail-current { margin-left: 14px; color: var(--ink); font-size: 13px; }
+.mail-collection > .guide { border-top: 0; padding-top: 2px; }
+.mail-source-list { margin-top: 16px; border-top: 1px solid var(--rule); }
+.mail-source-row { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(380px, 1.15fr);
+  gap: 28px; align-items: start; padding: 18px 0; border-bottom: 1px solid var(--rule); }
+.mail-source-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.mail-source-name { font-size: 14px; font-weight: 600; color: var(--ink); }
+.mail-source-sub { margin-top: 4px; font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+.mail-source-main .guide { margin-top: 8px; border-top: 0; padding-top: 0; }
+.mail-source-recent { margin-top: 10px; font-size: 12.5px; color: var(--ink-soft); }
+.mail-source-recent b { color: var(--ink); font-family: var(--mono); font-weight: 600; }
+.mail-source-health .intake-rail { margin: 0 0 10px; }
+.mail-source-health .pipe-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+}
+.mail-source-health [data-recheck] { grid-column: 2; justify-self: center; }
+.mail-source-health .check-out { grid-column: 3; justify-self: start; min-width: 0; }
 
 /* authorization guide disclosure */
 .guide { margin-top: 13px; border-top: 1px solid var(--rule); padding-top: 11px; }
@@ -480,4 +506,7 @@ tbody tr:hover { background: #fcfbf6; }
 
 @media (max-width: 720px) {
   .intake-grid, .ledger-grid { grid-template-columns: 1fr; }
+  .mail-source-row { grid-template-columns: 1fr; gap: 10px; }
+  .mail-source-health .intake-rail { margin-top: 4px; }
+  .mail-source-health .pipe-foot { display: flex; justify-content: center; }
 }

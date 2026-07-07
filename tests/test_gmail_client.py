@@ -185,6 +185,37 @@ def test_config_keeps_explicit_domestic_mail_provider():
     assert cfg["mail"]["app_password"] == "auth-code"
 
 
+def test_config_reads_only_mail_auth_json_for_ui_credentials():
+    old_cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.chdir(tmp)
+            Path("secrets").mkdir()
+            Path("config.toml").write_text(
+                '[mail]\nprovider = "qq"\nemail = "config@qq.com"\napp_password = "config-pw"\n',
+                encoding="utf-8",
+            )
+            Path("secrets/gmail_auth.json").write_text(
+                '{"provider":"gmail","email":"old@gmail.com","app_password":"old-pw"}',
+                encoding="utf-8",
+            )
+            cfg = config.load("config.toml")
+            assert cfg["mail"]["provider"] == "qq"
+            assert cfg["mail"]["email"] == "config@qq.com"
+            assert cfg["mail"]["app_password"] == "config-pw"
+
+            Path("secrets/mail_auth.json").write_text(
+                '{"provider":"163","email":"new@163.com","app_password":"new-pw"}',
+                encoding="utf-8",
+            )
+            cfg = config.load("config.toml")
+        finally:
+            os.chdir(old_cwd)
+    assert cfg["mail"]["provider"] == "163"
+    assert cfg["mail"]["email"] == "new@163.com"
+    assert cfg["mail"]["app_password"] == "new-pw"
+
+
 def _main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

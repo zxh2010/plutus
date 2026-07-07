@@ -3,7 +3,8 @@
 const state = { month: null, months: [], categories: [], view: "ledger",
                billingStartDay: 1,
                ledger: { card: "", status: "", q: "" },
-               mailProviderDraft: "" };
+               mailProviderDraft: "", mailEmailDraftProvider: "",
+               mailEmailDraft: "" };
 
 // ---- helpers -----------------------------------------------------------
 const $ = (sel) => document.querySelector(sel);
@@ -777,6 +778,10 @@ function _pipeCard(c) {
   const recheck = c.canCheck
     ? `<button class="btn btn-ghost" data-recheck style="padding:5px 12px;font-size:12.5px">重新自检</button>`
     : "";
+  const guide = c.guideSummary ? `<details class="guide" ${c.guideOpen ? "open" : ""}>
+      <summary>${c.guideSummary}</summary>
+      <div class="guide-body">${c.guide}</div>
+    </details>` : "";
   return `<div class="pipe" data-pipe="${c.cardType}">
     <div class="pipe-head">
       <div class="pipe-title"><div class="pipe-name">${c.name}</div>
@@ -793,10 +798,7 @@ function _pipeCard(c) {
       ${recheck}
       <span class="check-out" data-out>${c.outInit || ""}</span>
     </div>
-    <details class="guide" ${c.guideOpen ? "open" : ""}>
-      <summary>${c.guideSummary}</summary>
-      <div class="guide-body">${c.guide}</div>
-    </details>
+    ${guide}
     ${c.reminderTip ? `<details class="guide">
       <summary>${c.reminderTip.summary}</summary>
       <div class="guide-body">${c.reminderTip.body}</div>
@@ -811,20 +813,25 @@ function _mailHelp(provider) {
     gmail: {
       label: "Google 应用专用密码",
       url: "https://myaccount.google.com/apppasswords",
+      cta: "打开 Google 应用专用密码 ↗",
       hint: "16 位应用专用密码",
       placeholder: "粘贴 16 位应用专用密码",
     },
     qq: {
       label: "QQ 邮箱授权码",
-      url: "https://service.mail.qq.com/detail/0/75",
+      url: "https://help.mail.qq.com/detail/0/985",
+      cta: "打开 QQ 邮箱授权说明 ↗",
       hint: "IMAP/SMTP 授权码",
-      placeholder: "粘贴 QQ 邮箱授权码",
+      placeholder: "粘贴 QQ 生成的授权码",
+      path: "登录 QQ 邮箱后：右上角头像 → 设置 → 账号与安全 → 安全设置 → 开启服务 → 生成授权码。",
     },
     "163": {
       label: "163 邮箱授权码",
-      url: "https://help.mail.163.com/faqDetail.do?code=d7a5dc8471a84e5f8b63b34c4ef06d3b",
+      url: "https://help.mail.163.com/faqDetail.do?code=d7a5dc8471cd0c0e8b4b8f4f8e49998b374173cfe9171305fa1ce630d7f67ac2f4d4bd43fa3aaee0",
       hint: "客户端授权码",
-      placeholder: "粘贴 163 邮箱授权码",
+      placeholder: "粘贴 163 新增的授权密码",
+      cta: "打开 163 邮箱授权说明 ↗",
+      path: "登录 163 邮箱后：设置 → POP3/SMTP/IMAP → 新增授权密码。也可在网易邮箱大师：我 → 邮箱管理 → 第三方登录管理 → 通用授权码 → 新增授权码。",
     },
   };
   return help[provider] || help.gmail;
@@ -833,24 +840,112 @@ function _mailHelp(provider) {
 function _mailWizard(cfg) {
   const link = (href, label) => `<a class="aw-go" href="${href}" target="_blank" rel="noopener">${label}</a>`;
   const providers = cfg.mail_providers || [{ key: "gmail", label: "Gmail" }];
-  const active = state.mailProviderDraft || cfg.mail_provider || "gmail";
+  const configuredProvider = cfg.mail_provider || "gmail";
+  const active = state.mailProviderDraft || configuredProvider;
   const help = _mailHelp(active);
+  const configuredEmail = cfg.mail_email || cfg.gmail_email || "";
+  const email = state.mailEmailDraftProvider === active
+    ? state.mailEmailDraft
+    : (active === configuredProvider ? configuredEmail : "");
   const opts = providers.map((p) =>
     `<option value="${esc(p.key)}" ${p.key === active ? "selected" : ""}>${esc(p.label)}</option>`).join("");
+  const cta = help.cta || "去查看 ↗";
   return `<div class="aw">
     <div class="aw-row"><div class="aw-main"><b>选择接收招行邮件的邮箱类型</b>
       <select id="aw-provider" class="aw-input">${opts}</select></div></div>
     <div class="aw-row"><div class="aw-main"><b>填写邮箱地址</b>
-      <input id="aw-email" class="aw-input" type="email" placeholder="your@example.com" value="${esc(cfg.mail_email || cfg.gmail_email || "")}"></div></div>
-    <div class="aw-row"><div class="aw-main">生成该邮箱的<b>${esc(help.label)}</b></div>
-      ${link(help.url, "去查看 ↗")}</div>
+      <input id="aw-email" class="aw-input" type="email" placeholder="your@example.com" value="${esc(email)}"></div></div>
+    <div class="aw-row"><div class="aw-main">生成该邮箱的<b>${esc(help.label)}</b>
+      ${help.path ? `<div class="sub">${esc(help.path)}</div>` : ""}</div>
+      ${link(help.url, cta)}</div>
     <div class="aw-row"><div class="aw-main"><b>粘贴密码并连接</b>
       <div class="aw-save"><input id="aw-pw" class="aw-input" type="password" placeholder="${esc(help.placeholder)}" autocomplete="off">
         <button class="btn" id="aw-save">保存并连接</button></div>
       <div class="sub">这里填的是${esc(help.hint)}，不是邮箱登录密码。</div>
       <div id="aw-out" class="aw-out"></div></div></div>
   </div>
-  <div class="aw-foot">密码只存在本机 <span class="num">secrets/gmail_auth.json</span>（git 忽略），不外发。</div>`;
+  <div class="aw-foot">密码只存在本机 <span class="num">secrets/mail_auth.json</span>（git 忽略），不外发。</div>`;
+}
+
+function _mailEditing() {
+  return !!state.mailProviderDraft || !!state.mailEmailDraftProvider;
+}
+
+function _mailSettingsCard(cfg) {
+  const ready = !!cfg.mail_configured || !!cfg.gmail_configured;
+  const providerLabel = cfg.mail_provider_label || "Gmail";
+  const email = cfg.mail_email || cfg.gmail_email || "未配置";
+  const editing = _mailEditing();
+  const sub = ready
+    ? `当前生效：${esc(providerLabel)}<span class="sub"> · ${esc(email)}</span>`
+    : `<span style="color:var(--red)">未授权</span>`;
+  return `<div class="pipe" data-mail-settings style="grid-column:1/-1">
+    <div class="pipe-head">
+      <div class="pipe-title"><div class="pipe-name">邮箱账号</div>
+        <div class="pipe-sub">${sub}</div></div>
+    </div>
+    ${editing ? `<div class="check-out">正在配置新邮箱，保存成功后生效；当前自检仍以已保存邮箱为准。</div>` : ""}
+    <details class="guide" open>
+      <summary>${ready ? "更换邮箱账号 / 重新授权" : "如何授权 · 3 步页内完成"}</summary>
+      <div class="guide-body">${_mailWizard(cfg)}</div>
+    </details>
+  </div>`;
+}
+
+function _mailSourceRow(c) {
+  const recheck = c.canCheck
+    ? `<button class="btn btn-ghost" data-recheck style="padding:5px 12px;font-size:12.5px">重新自检</button>`
+    : "";
+  return `<div class="mail-source-row" data-pipe="${c.cardType}">
+    <div class="mail-source-main">
+      <div class="mail-source-name">${esc(c.sourceName)}</div>
+      <div class="mail-source-sub">${esc(c.sourceUse)}</div>
+      <div class="mail-source-recent">最近一笔 <b>${c.fresh || "—"}</b></div>
+      ${c.reminderTip ? `<details class="guide">
+        <summary>${c.reminderTip.summary}</summary>
+        <div class="guide-body">${c.reminderTip.body}</div>
+      </details>` : ""}
+    </div>
+    <div class="mail-source-health">
+      <div class="intake-rail" data-rail>
+        ${_railNode("① 方式", c.method, "done", "on")}
+        ${_railNode("② 授权", c.auth.val, c.auth.state, c.auth.lead)}
+        ${_railNode("③ 连通", c.conn.val, c.conn.state, "")}
+      </div>
+      <div class="pipe-foot">${recheck}<span class="check-out" data-out>${c.outInit || ""}</span></div>
+    </div>
+  </div>`;
+}
+
+function _mailCollectionCard(cfg, debit, credit) {
+  const ready = !!cfg.mail_configured || !!cfg.gmail_configured;
+  const providerLabel = cfg.mail_provider_label || "Gmail";
+  const email = cfg.mail_email || cfg.gmail_email || "未配置";
+  const editing = _mailEditing();
+  const stateLine = ready
+    ? `当前生效：${esc(providerLabel)}<span class="sub"> · ${esc(email)}</span>`
+    : `<span style="color:var(--red)">未授权</span>`;
+  const editLine = editing
+    ? `<div class="check-out">正在配置新邮箱，保存成功后生效；当前自检仍以已保存邮箱为准。</div>`
+    : "";
+  return `<div class="pipe mail-collection" data-mail-collection>
+    <div class="pipe-head">
+      <div class="pipe-title"><div class="pipe-name">招商银行邮件采集</div>
+        <div class="pipe-sub">一个邮箱账号接收招行通知邮件，Plutus 自动识别借记卡、信用卡和进项。</div></div>
+    </div>
+    <div class="mail-account-strip">
+      <div><span class="ledger-k">邮箱账号</span><span class="mail-current">${stateLine}</span></div>
+      ${editLine}
+    </div>
+    <details class="guide" ${ready && !editing ? "" : "open"}>
+      <summary>${ready ? "更换邮箱账号 / 重新授权" : "如何授权 · 3 步页内完成"}</summary>
+      <div class="guide-body">${_mailWizard(cfg)}</div>
+    </details>
+    <div class="mail-source-list">
+      ${_mailSourceRow(debit)}
+      ${_mailSourceRow(credit)}
+    </div>
+  </div>`;
 }
 
 function _mailAuthHint(err, provider) {
@@ -882,6 +977,8 @@ function _intakeCard(cardType, name, cfg) {
 
   if (!support.email) {
     return Object.assign(base, {
+      sourceName: cardType === "credit" ? "每日信用管家" : "一卡通账户变动通知",
+      sourceUse: cardType === "credit" ? "用于信用卡消费识别" : "用于借记卡消费、工资/报销/汇款/理财到账识别",
       sub: "邮箱 · 暂无解析器",
       seal: { cls: "warn", ch: "待" },
       auth: { val: "暂无解析器", state: "warn", lead: "off" },
@@ -894,17 +991,18 @@ function _intakeCard(cardType, name, cfg) {
   const ready = !!cfg.mail_configured || !!cfg.gmail_configured;
   const providerLabel = cfg.mail_provider_label || "Gmail";
   const email = cfg.mail_email || cfg.gmail_email || "未配置";
+  const editing = _mailEditing();
   return Object.assign(base, {
+    sourceName: cardType === "credit" ? "每日信用管家" : "一卡通账户变动通知",
+    sourceUse: cardType === "credit" ? "用于信用卡消费识别" : "用于借记卡消费、工资/报销/汇款/理财到账识别",
     sub: `${cardType === "credit" ? "每日信用管家" : "一卡通账户变动通知"} · ${esc(providerLabel)}` +
       `<span class="sub"> · ${esc(email)}</span>`,
-    seal: ready ? { cls: "checking", ch: "检" } : { cls: "warn", ch: "待" },
+    seal: ready && !editing ? { cls: "checking", ch: "检" } : { cls: "warn", ch: "待" },
     auth: ready ? { val: "邮箱授权码", state: "checking", lead: "on" }
                 : { val: "未授权", state: "warn", lead: "off" },
-    conn: ready ? { val: "检测中…", state: "checking" } : { val: "待授权", state: "pending" },
-    autoRun: ready,
-    guideOpen: !ready,
-    guideSummary: ready ? "更换邮箱账号 / 重新授权" : "如何授权 · 3 步页内完成",
-    guide: _mailWizard(cfg),
+    conn: ready ? (editing ? { val: "待保存", state: "pending" } : { val: "检测中…", state: "checking" })
+                : { val: "待授权", state: "pending" },
+    autoRun: ready && !editing,
   });
 }
 
@@ -923,7 +1021,7 @@ async function renderConfig() {
       <span class="set-thesis">钱从哪来，又怎么记 —— 四处配齐，流水才进得对。</span></div>
 
     <div class="set-group">进料 · 钱从哪来</div>
-    <div class="intake-grid">${_pipeCard(debit)}${_pipeCard(credit)}</div>
+    <div class="intake-grid mail-intake-grid">${_mailCollectionCard(cfg, debit, credit)}</div>
 
     <div class="set-group">记账 · 钱怎么记</div>
     <div class="ledger-grid">
@@ -960,7 +1058,11 @@ async function renderConfig() {
     node.className = "rail-node " + state + (lead === "on" ? " lead-on" : lead === "off" ? " lead-off" : "");
     if (val != null) node.querySelector(".rail-val").textContent = val;
   };
-  const setSeal = (el, cls, ch) => { const s = el.querySelector("[data-seal]"); s.className = "seal " + cls; s.textContent = ch; };
+  const setSeal = (el, cls, ch) => {
+    const s = el.querySelector("[data-seal]");
+    if (!s) return;
+    s.className = "seal " + cls; s.textContent = ch;
+  };
   const setOut = (el, html, cls) => { const o = el.querySelector("[data-out]"); o.className = "check-out " + (cls || ""); o.innerHTML = html; };
 
   async function runCheck(el, endpoint, cardType) {
@@ -1021,6 +1123,8 @@ async function renderConfig() {
       const c = r.check || {};
       if (r.ok && c.ok) {
         state.mailProviderDraft = "";
+        state.mailEmailDraftProvider = "";
+        state.mailEmailDraft = "";
         toast(`已连接 ${_mailHelp(provider).label.replace("授权码", "")} · 授权成功`);
         renderConfig();
         return;
@@ -1033,7 +1137,15 @@ async function renderConfig() {
   const providerSel = $("#aw-provider");
   if (providerSel) providerSel.addEventListener("change", () => {
     state.mailProviderDraft = providerSel.value;
+    state.mailEmailDraftProvider = "";
+    state.mailEmailDraft = "";
     renderConfig();
+  });
+  const emailInput = $("#aw-email");
+  if (emailInput) emailInput.addEventListener("input", () => {
+    const provider = ($("#aw-provider")?.value || "gmail").trim();
+    state.mailEmailDraftProvider = provider;
+    state.mailEmailDraft = emailInput.value;
   });
 
   // -- Hermes -> WeChat end-to-end delivery check -----------------------
