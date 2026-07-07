@@ -1,8 +1,9 @@
-"""IMAP access to Gmail, optionally tunneled through an HTTP CONNECT proxy
-(Gmail is slow/unreachable directly here). Read-only.
+"""Read-only IMAP access to the user's transaction mailbox.
 
-Stable ids: Gmail's X-GM-MSGID is used as the dedup key for emails; the IMAP UID
-is used as the incremental high-water mark for resume.
+Gmail remains supported with its X-GM-RAW search and X-GM-MSGID stable id. China
+mainland-friendly providers (QQ/163) use standard IMAP search and Message-ID as
+the stable id. The public module name stays gmail_client for compatibility with
+the existing ingestion/web code.
 """
 from __future__ import annotations
 
@@ -23,6 +24,29 @@ from typing import Optional
 # UI language changes — which silently broke ingestion when it was hardcoded.
 ALL_MAIL = '"[Gmail]/All Mail"'
 _BEIJING = timezone(timedelta(hours=8))
+PROVIDERS = {
+    "gmail": {
+        "label": "Gmail",
+        "imap_host": "imap.gmail.com",
+        "imap_port": 993,
+        "mailbox": None,          # resolve Gmail All Mail by \All
+        "search": "gmail",
+    },
+    "qq": {
+        "label": "QQ 邮箱",
+        "imap_host": "imap.qq.com",
+        "imap_port": 993,
+        "mailbox": "INBOX",
+        "search": "imap",
+    },
+    "163": {
+        "label": "163 邮箱",
+        "imap_host": "imap.163.com",
+        "imap_port": 993,
+        "mailbox": "INBOX",
+        "search": "imap",
+    },
+}
 
 # One LIST reply line:  (flags) "delimiter" name   — name may be quoted.
 _LIST_RE = re.compile(rb'^\((?P<flags>[^)]*)\)\s+(?:"[^"]*"|NIL)\s+(?P<name>.+?)\s*$')
@@ -103,8 +127,35 @@ def select_all_mail(m: imaplib.IMAP4, mailbox: Optional[str] = None) -> str:
     return mailbox
 
 
+def _mail_cfg(cfg: dict) -> dict:
+    """Return the active mailbox config, accepting both new [mail] and legacy
+    [gmail]. UI support is added later; this keeps current callers stable."""
+    raw = dict(cfg.get("mail") or {})
+    legacy = cfg.get("gmail") or {}
+    if not raw:
+        raw = dict(legacy)
+        raw["provider"] = "gmail"
+    provider = str(raw.get("provider") or "gmail").lower()
+    if provider not in PROVIDERS:
+        raise ValueError(f"unsupported mail provider: {provider}")
+    defaults = PROVIDERS[provider]
+    out = dict(defaults)
+    out.update(raw)
+    out["provider"] = provider
+    # Legacy Gmail credentials still work when [mail] is present but incomplete.
+    if provider == "gmail":
+        for k in ("email", "app_password", "app_password_file", "query", "mailbox"):
+            if not out.get(k) and legacy.get(k):
+                out[k] = legacy[k]
+    return out
+
+
+def provider_label(provider: str) -> str:
+    return PROVIDERS.get(provider, {}).get("label", provider)
+
+
 def connect(cfg: dict) -> imaplib.IMAP4:
-    g = cfg["gmail"]
+    g = _mail_cfg(cfg)
     proxy = cfg.get("proxy", {})
     host, port = g.get("imap_host", "imap.gmail.com"), int(g.get("imap_port", 993))
     if proxy.get("host"):
@@ -112,16 +163,68 @@ def connect(cfg: dict) -> imaplib.IMAP4:
     else:
         m = imaplib.IMAP4_SSL(host, port)
     m.login(g["email"], g["app_password"])
-    select_all_mail(m, g.get("mailbox"))
+    if g["provider"] == "gmail":
+        select_all_mail(m, g.get("mailbox"))
+    else:
+        _select_mailbox(m, g.get("mailbox") or PROVIDERS[g["provider"]]["mailbox"])
+    setattr(m, "_plutus_provider", g["provider"])
     return m
 
 
-def search_uids(m: imaplib.IMAP4, gmail_query: str) -> list[int]:
-    """Search using Gmail syntax via X-GM-RAW. ASCII queries only (imaplib limit)."""
-    typ, data = m.uid("search", None, "X-GM-RAW", f'"{gmail_query}"')
+def _select_mailbox(m: imaplib.IMAP4, mailbox: str) -> str:
+    typ, data = m.select(mailbox, readonly=True)
+    if typ != "OK":
+        detail = data[0].decode("utf-8", "replace") if data and data[0] else typ
+        raise RuntimeError(f"IMAP SELECT {mailbox} failed: {detail}")
+    return mailbox
+
+
+def search_uids(m: imaplib.IMAP4, query: str) -> list[int]:
+    """Search matching transaction senders.
+
+    Gmail uses X-GM-RAW so existing queries keep working. QQ/163 use portable
+    IMAP criteria derived from the same query string: from: addresses and either
+    after:YYYY/MM/DD or newer_than:Nd when present.
+    """
+    provider = getattr(m, "_plutus_provider", "gmail")
+    if provider != "gmail":
+        return _search_uids_imap(m, query)
+    typ, data = m.uid("search", None, "X-GM-RAW", f'"{query}"')
     if typ != "OK":
         raise RuntimeError(f"search failed: {typ} {data}")
     return [int(x) for x in data[0].split()]
+
+
+def _search_uids_imap(m: imaplib.IMAP4, query: str) -> list[int]:
+    senders = re.findall(r"from:([^\s)]+)", query or "")
+    if not senders:
+        raise RuntimeError("standard IMAP search requires at least one from: sender")
+    date = _since_date(query)
+    out: set[int] = set()
+    for sender in senders:
+        criteria = []
+        if date:
+            criteria += ["SINCE", date]
+        criteria += ["FROM", sender]
+        typ, data = m.uid("search", None, *criteria)
+        if typ != "OK":
+            raise RuntimeError(f"search failed: {typ} {data}")
+        out.update(int(x) for x in data[0].split())
+    return sorted(out)
+
+
+def _since_date(query: str) -> Optional[str]:
+    m = re.search(r"after:(\d{4})/(\d{1,2})/(\d{1,2})", query or "")
+    if m:
+        return _imap_date(datetime(int(m.group(1)), int(m.group(2)), int(m.group(3))))
+    m = re.search(r"newer_than:(\d+)d", query or "")
+    if m:
+        return _imap_date(datetime.now() - timedelta(days=int(m.group(1))))
+    return None
+
+
+def _imap_date(d: datetime) -> str:
+    return d.strftime("%d-%b-%Y")
 
 
 def _extract_bodies(msg) -> tuple[Optional[str], str]:
@@ -145,17 +248,22 @@ def _extract_bodies(msg) -> tuple[Optional[str], str]:
 
 
 def fetch(m: imaplib.IMAP4, uid: int) -> FetchedEmail:
-    typ, data = m.uid("fetch", str(uid), "(X-GM-MSGID INTERNALDATE RFC822)")
+    provider = getattr(m, "_plutus_provider", "gmail")
+    fields = "(X-GM-MSGID INTERNALDATE RFC822)" if provider == "gmail" else "(INTERNALDATE RFC822)"
+    typ, data = m.uid("fetch", str(uid), fields)
+    if typ != "OK":
+        raise RuntimeError(f"fetch failed: {typ} {data}")
     meta_line = data[0][0].decode("latin-1", "replace")
     msgid = _between(meta_line, "X-GM-MSGID ", " ")
     internal = imaplib.Internaldate2tuple(data[0][0]) if b"INTERNALDATE" in data[0][0] else None
     msg = email.message_from_bytes(data[0][1])
+    stable_id = msgid or (msg.get("Message-ID") or "").strip() or f"{provider}:{uid}"
 
     received = _received_dt(msg)
     html_body, text = _extract_bodies(msg)
     return FetchedEmail(
         uid=uid,
-        gmail_msgid=msgid,
+        gmail_msgid=stable_id,
         sender=_decode(msg.get("From")),
         subject=_decode(msg.get("Subject")),
         received=received,

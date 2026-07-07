@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-# UI-managed Gmail credentials saved from the settings page; override config.toml
+# UI-managed mail credentials saved from the settings page; override config.toml
 # so a user can authorize entirely in the browser (see web POST /api/gmail_auth).
 _GMAIL_AUTH_FILE = "secrets/gmail_auth.json"
 
@@ -66,9 +66,20 @@ def _parse_value(v: str) -> Any:
 def load(path: str = "config.toml") -> dict:
     cfg = _load_toml(path)
     gmail = cfg.setdefault("gmail", {})
+    mail = cfg.setdefault("mail", {})
+    if not mail:
+        # Backward compatibility: old config.toml only had [gmail]. Internally
+        # expose it as [mail] so provider-aware code has one place to read.
+        mail.update(gmail)
+        mail["provider"] = "gmail"
+
     pw_file = gmail.get("app_password_file")
     if pw_file and os.path.exists(pw_file):
         gmail["app_password"] = Path(pw_file).read_text(encoding="utf-8").strip()
+    mail_pw_file = mail.get("app_password_file")
+    if mail_pw_file and os.path.exists(mail_pw_file):
+        mail["app_password"] = Path(mail_pw_file).read_text(encoding="utf-8").strip()
+
     # UI-saved credentials win over config.toml / the password file.
     if os.path.exists(_GMAIL_AUTH_FILE):
         try:
@@ -77,6 +88,14 @@ def load(path: str = "config.toml") -> dict:
                 gmail["email"] = ui["email"].strip()
             if ui.get("app_password"):
                 gmail["app_password"] = ui["app_password"].strip()
+            # The current settings UI writes Gmail-only credentials. Do not let
+            # that local file override an explicit domestic provider such as QQ
+            # or 163; future UI work will save provider-aware credentials.
+            if (mail.get("provider") or "gmail") == "gmail":
+                if ui.get("email"):
+                    mail["email"] = ui["email"].strip()
+                if ui.get("app_password"):
+                    mail["app_password"] = ui["app_password"].strip()
         except (ValueError, OSError):
             pass
     return cfg
