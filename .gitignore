@@ -1,0 +1,20 @@
+# secrets & local data
+secrets/
+config.toml
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# real transaction emails used as test fixtures — private, keep out of history
+tests/fixtures/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# macOS
+.DS_Store

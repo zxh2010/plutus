@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: scripts/install_launchd.sh substitutes __EXEC__ / __ROOT__ /
+     __LOGDIR__ for this machine. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>ai.plutus.daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__EXEC__</string>
+    <string>-u</string>
+    <string>-m</string>
+    <string>plutus</string>
+    <string>daemon</string>
+  </array>
+  <key>WorkingDirectory</key><string>__ROOT__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key><string>__ROOT__</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>__LOGDIR__/daemon.log</string>
+  <key>StandardErrorPath</key><string>__LOGDIR__/daemon.err.log</string>
+</dict>
+</plist>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Plutus · 对账台</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <aside class="rail">
+    <div class="brand">
+      <span class="brand-mark">Plutus</span>
+      <span class="brand-sub">对账台</span>
+    </div>
+    <nav class="nav" id="nav">
+      <button class="nav-item is-active" data-view="ledger">明细</button>
+      <button class="nav-item" data-view="pending">待分类</button>
+      <button class="nav-item" data-view="stats">月度/年度</button>
+      <button class="nav-item" data-view="income">进项</button>
+      <button class="nav-item" data-view="knowledge">知识库</button>
+      <button class="nav-item" data-view="config">设置</button>
+    </nav>
+    <div class="rail-foot">
+      <div class="stat">
+        <span class="stat-label">本月支出</span>
+        <span class="stat-value" id="stat-spend">—</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">待你处理</span>
+        <span class="stat-value stat-pending" id="stat-pending">—</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <section class="view" id="view"></section>
+  </main>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

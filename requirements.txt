@@ -1,0 +1,7 @@
+# No third-party dependencies — Plutus runs on the Python standard library only.
+#   - Gmail: imaplib (tunneled through an HTTP CONNECT proxy)
+#   - storage: sqlite3
+#   - email parsing: html / re (stdlib)
+#   - web console: http.server
+#   - config: tomllib (3.11+) with a tiny built-in fallback for 3.9
+# Python 3.9+ works. Nothing to `pip install`.

@@ -1,0 +1,41 @@
+# Copy to config.toml and fill in. config.toml is git-ignored.
+
+[gmail]
+# Access via IMAP + a Google App Password (no Google Cloud project needed).
+imap_host = "imap.gmail.com"
+imap_port = 993
+email = "your-account@gmail.com"
+# 16-char app password from https://myaccount.google.com/apppasswords
+# Kept in a git-ignored file; never commit it.
+app_password_file = "secrets/app_password.txt"
+# Gmail search syntax, applied over IMAP via X-GM-RAW.
+# Initial backfill window; incremental sync then tracks the highest UID.
+query = "from:cmbchina.com newer_than:400d"
+
+[proxy]
+# Optional HTTP CONNECT proxy to tunnel IMAP (Gmail is unreachable/slow direct here).
+# Leave host = "" to connect directly.
+host = ""
+port = 8118
+
+[db]
+path = "plutus.db"
+
+[poll]
+interval_seconds = 90
+
+[web]
+host = "127.0.0.1"    # Change to 0.0.0.0 only when LAN access is intended.
+port = 8973
+# access_passphrase = "change-me"   # simple gate for LAN access
+
+[stats]
+# Billing period start day for monthly/annual views.
+# 1 = calendar month (default). e.g. 15 = each period runs 15th -> 14th of next
+# month, matching a credit-card statement cycle. Clamped to [1, 28].
+billing_start_day = 1
+
+[notify]
+# WeChat push of new transactions via the hermes gateway.
+hermes_bin = "~/.local/bin/hermes"
+weixin_target = "weixin:YOUR_WEIXIN_CHAT_ID@im.wechat"

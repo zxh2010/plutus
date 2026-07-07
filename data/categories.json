@@ -1,0 +1,11 @@
+[
+  { "key": "dining",       "name": "吃吃喝喝",    "descr": "外食、外卖、盒马、山姆、天猫/淘宝及各类网购食品" },
+  { "key": "utilities",    "name": "水电煤物业",  "descr": "水费、电费、燃气费、物业费" },
+  { "key": "subscription", "name": "软件订阅",    "descr": "翻墙软件、iCloud、App Store 等软件/App 订阅与内购" },
+  { "key": "transport",    "name": "出行交通",    "descr": "停车费、打车、火车票、机票等在车/路上的花销" },
+  { "key": "hobby",        "name": "兴趣爱好",    "descr": "基于个人兴趣的消费，如 Mac mini、买花" },
+  { "key": "clothing",     "name": "个人服饰",    "descr": "给自己买的鞋、袜等穿戴" },
+  { "key": "kids",         "name": "孩子相关",    "descr": "孩子的吃穿玩用、教育、社交等全部花销" },
+  { "key": "occasional",   "name": "偶发一次性",  "descr": "当月才有的偶发支出，如补税" },
+  { "key": "other",        "name": "其他",        "descr": "暂时无法归类的兜底项，统计时可忽略" }
+]
