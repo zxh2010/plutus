@@ -257,6 +257,10 @@ class Handler(BaseHTTPRequestHandler):
                 "imap_host": mail.get("imap_host", ""),
                 "mailbox": mail.get("mailbox", ""),
                 "proxy": bool(cfg.get("proxy", {}).get("host")),
+                "mail_proxy_supported": mail["provider"] == "gmail",
+                "mail_proxy_enabled": gmail_client._proxy_cfg(cfg, mail)["enabled"],
+                "mail_proxy_host": gmail_client._proxy_cfg(cfg, mail)["host"] or "127.0.0.1",
+                "mail_proxy_port": gmail_client._proxy_cfg(cfg, mail)["port"],
                 "last_credit_email": last_credit_email,
                 "last_credit_txn": last_credit_txn,
                 "last_uid": last_uid,
@@ -325,11 +329,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({"ok": False, "error": "邮箱和授权码都要填"})
             Path("secrets").mkdir(exist_ok=True)
             f = Path("secrets/mail_auth.json")
-            f.write_text(json.dumps({
+            saved = {
                 "provider": provider,
                 "email": email,
                 "app_password": pw,
-            }, ensure_ascii=False), encoding="utf-8")
+            }
+            if provider == "gmail":
+                proxy_enabled = bool(body.get("proxy_enabled"))
+                proxy_host = (body.get("proxy_host") or "127.0.0.1").strip()
+                try:
+                    proxy_port = int(body.get("proxy_port") or 8118)
+                except (TypeError, ValueError):
+                    return self._send_json({"ok": False, "error": "代理端口必须是数字"})
+                saved.update({
+                    "proxy_enabled": proxy_enabled,
+                    "proxy_host": proxy_host,
+                    "proxy_port": proxy_port,
+                })
+            f.write_text(json.dumps(saved, ensure_ascii=False), encoding="utf-8")
             try:
                 os.chmod(f, 0o600)
             except OSError:

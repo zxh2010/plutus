@@ -79,6 +79,22 @@ class _FakeFetchIMAP:
         return "OK", [(b"1 (INTERNALDATE \"07-Jul-2026 10:00:00 +0800\" RFC822 {1}", raw)]
 
 
+class _FakeLoginIMAP:
+    def __init__(self):
+        self.logged_in = None
+        self.selected = None
+
+    def login(self, email, app_password):
+        self.logged_in = (email, app_password)
+
+    def select(self, mailbox, readonly=False):
+        self.selected = mailbox
+        return "OK", [b"1"]
+
+    def list(self, *a, **k):
+        return "OK", [b'(\\All \\HasNoChildren) "/" "[Gmail]/All Mail"']
+
+
 def test_resolve_picks_all_flagged_folder_regardless_of_name():
     m = _FakeIMAP(_LOCALIZED_ROWS)
     assert gmail_client.resolve_all_mail(m) == _ALL_MAIL_NAME
@@ -214,6 +230,65 @@ def test_config_reads_only_mail_auth_json_for_ui_credentials():
     assert cfg["mail"]["provider"] == "163"
     assert cfg["mail"]["email"] == "new@163.com"
     assert cfg["mail"]["app_password"] == "new-pw"
+
+
+def test_ui_mail_auth_can_disable_legacy_gmail_proxy():
+    old_cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.chdir(tmp)
+            Path("secrets").mkdir()
+            Path("config.toml").write_text(
+                '[mail]\nprovider = "gmail"\nemail = "config@gmail.com"\napp_password = "config-pw"\n'
+                '[proxy]\nhost = "127.0.0.1"\nport = 8118\n',
+                encoding="utf-8",
+            )
+            Path("secrets/mail_auth.json").write_text(
+                '{"provider":"gmail","email":"new@gmail.com","app_password":"new-pw",'
+                '"proxy_enabled":false,"proxy_host":"127.0.0.1","proxy_port":8118}',
+                encoding="utf-8",
+            )
+            cfg = config.load("config.toml")
+        finally:
+            os.chdir(old_cwd)
+    assert cfg["mail"]["provider"] == "gmail"
+    assert cfg["mail"]["proxy_enabled"] is False
+    assert gmail_client._proxy_cfg(cfg)["enabled"] is False
+
+
+def test_connect_uses_proxy_only_for_gmail_when_enabled():
+    direct_calls = []
+    proxy_calls = []
+    original_ssl = gmail_client.imaplib.IMAP4_SSL
+    original_proxy = gmail_client._make_proxy_imap
+    try:
+        gmail_client.imaplib.IMAP4_SSL = lambda host, port: direct_calls.append((host, port)) or _FakeLoginIMAP()
+        gmail_client._make_proxy_imap = (
+            lambda proxy_host, proxy_port, host, port:
+            proxy_calls.append((proxy_host, proxy_port, host, port)) or _FakeLoginIMAP()
+        )
+
+        gmail_client.connect({
+            "mail": {"provider": "qq", "email": "u@qq.com", "app_password": "pw"},
+            "proxy": {"host": "127.0.0.1", "port": 8118},
+        })
+        gmail_client.connect({
+            "mail": {
+                "provider": "gmail",
+                "email": "u@gmail.com",
+                "app_password": "pw",
+                "proxy_enabled": True,
+                "proxy_host": "127.0.0.1",
+                "proxy_port": 8118,
+            },
+            "proxy": {},
+        })
+    finally:
+        gmail_client.imaplib.IMAP4_SSL = original_ssl
+        gmail_client._make_proxy_imap = original_proxy
+
+    assert direct_calls == [("imap.qq.com", 993)]
+    assert proxy_calls == [("127.0.0.1", 8118, "imap.gmail.com", 993)]
 
 
 def _main() -> int:

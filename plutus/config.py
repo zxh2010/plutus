@@ -91,6 +91,10 @@ def load(path: str = "config.toml") -> dict:
                     mail["email"] = ui["email"].strip()
                 if ui.get("app_password"):
                     mail["app_password"] = ui["app_password"].strip()
+                if "proxy_enabled" in ui:
+                    mail["proxy_enabled"] = bool(ui.get("proxy_enabled"))
+                    mail["proxy_host"] = str(ui.get("proxy_host") or "").strip()
+                    mail["proxy_port"] = ui.get("proxy_port") or 8118
                 if ui_provider == "gmail":
                     if ui.get("email"):
                         gmail["email"] = ui["email"].strip()

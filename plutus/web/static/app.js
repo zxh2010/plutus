@@ -4,7 +4,9 @@ const state = { month: null, months: [], categories: [], view: "ledger",
                billingStartDay: 1,
                ledger: { card: "", status: "", q: "" },
                mailProviderDraft: "", mailEmailDraftProvider: "",
-               mailEmailDraft: "" };
+               mailEmailDraft: "",
+               mailProxyDraftProvider: "", mailProxyEnabledDraft: false,
+               mailProxyHostDraft: "", mailProxyPortDraft: "" };
 
 // ---- helpers -----------------------------------------------------------
 const $ = (sel) => document.querySelector(sel);
@@ -818,6 +820,25 @@ function _mailWizard(cfg) {
   const opts = providers.map((p) =>
     `<option value="${esc(p.key)}" ${p.key === active ? "selected" : ""}>${esc(p.label)}</option>`).join("");
   const cta = help.cta || "去查看 ↗";
+  const proxyDraft = state.mailProxyDraftProvider === active;
+  const proxyEnabled = proxyDraft
+    ? state.mailProxyEnabledDraft
+    : (active === configuredProvider ? !!cfg.mail_proxy_enabled : false);
+  const proxyHost = proxyDraft
+    ? state.mailProxyHostDraft
+    : (active === configuredProvider ? (cfg.mail_proxy_host || "127.0.0.1") : "127.0.0.1");
+  const proxyPort = proxyDraft
+    ? state.mailProxyPortDraft
+    : (active === configuredProvider ? (cfg.mail_proxy_port || 8118) : 8118);
+  const proxyRow = active === "gmail" ? `<div class="aw-row"><div class="aw-main">
+      <label class="aw-check"><input id="aw-proxy-enabled" type="checkbox" ${proxyEnabled ? "checked" : ""}>
+        <b>网络代理</b><span class="sub">（仅 Gmail 可选）</span></label>
+      <div class="sub">只影响 Gmail 邮箱连接；QQ、163 邮箱始终直连。</div>
+      <div class="aw-proxy-fields" ${proxyEnabled ? "" : "hidden"}>
+        <input id="aw-proxy-host" class="aw-input" type="text" placeholder="127.0.0.1" value="${esc(proxyHost)}">
+        <input id="aw-proxy-port" class="aw-input aw-port" type="number" min="1" max="65535" placeholder="8118" value="${esc(proxyPort)}">
+      </div>
+    </div></div>` : "";
   return `<div class="aw">
     <div class="aw-row"><div class="aw-main"><b>选择接收招行邮件的邮箱类型</b>
       <select id="aw-provider" class="aw-input">${opts}</select></div></div>
@@ -826,6 +847,7 @@ function _mailWizard(cfg) {
     <div class="aw-row"><div class="aw-main">生成该邮箱的<b>${esc(help.label)}</b>
       ${help.path ? `<div class="sub">${esc(help.path)}</div>` : ""}</div>
       ${link(help.url, cta)}</div>
+    ${proxyRow}
     <div class="aw-row"><div class="aw-main"><b>粘贴密码并连接</b>
       <div class="aw-save"><input id="aw-pw" class="aw-input" type="password" placeholder="${esc(help.placeholder)}" autocomplete="off">
         <button class="btn" id="aw-save">保存并连接</button></div>
@@ -1066,12 +1088,22 @@ async function renderConfig() {
     if (!email || !pw) { out.className = "aw-out bad"; out.textContent = "邮箱和授权码都要填"; return; }
     awSave.disabled = true; out.className = "aw-out"; out.textContent = "保存并连接中…";
     try {
-      const r = await post(`/api/gmail_auth`, { provider, email, app_password: pw });
+      const proxyEnabled = !!$("#aw-proxy-enabled")?.checked;
+      const proxyHost = ($("#aw-proxy-host")?.value || "127.0.0.1").trim();
+      const proxyPort = ($("#aw-proxy-port")?.value || "8118").trim();
+      const payload = { provider, email, app_password: pw };
+      if (provider === "gmail") {
+        payload.proxy_enabled = proxyEnabled;
+        payload.proxy_host = proxyHost;
+        payload.proxy_port = proxyPort;
+      }
+      const r = await post(`/api/gmail_auth`, payload);
       const c = r.check || {};
       if (r.ok && c.ok) {
         state.mailProviderDraft = "";
         state.mailEmailDraftProvider = "";
         state.mailEmailDraft = "";
+        state.mailProxyDraftProvider = "";
         toast(`已连接 ${_mailHelp(provider).label.replace("授权码", "")} · 授权成功`);
         renderConfig();
         return;
@@ -1086,6 +1118,7 @@ async function renderConfig() {
     state.mailProviderDraft = providerSel.value;
     state.mailEmailDraftProvider = "";
     state.mailEmailDraft = "";
+    state.mailProxyDraftProvider = "";
     renderConfig();
   });
   const emailInput = $("#aw-email");
@@ -1094,6 +1127,22 @@ async function renderConfig() {
     state.mailEmailDraftProvider = provider;
     state.mailEmailDraft = emailInput.value;
   });
+  const proxyEnabled = $("#aw-proxy-enabled");
+  const proxyHost = $("#aw-proxy-host");
+  const proxyPort = $("#aw-proxy-port");
+  const rememberProxyDraft = () => {
+    const provider = ($("#aw-provider")?.value || "gmail").trim();
+    state.mailProxyDraftProvider = provider;
+    state.mailProxyEnabledDraft = !!proxyEnabled?.checked;
+    state.mailProxyHostDraft = proxyHost?.value || "127.0.0.1";
+    state.mailProxyPortDraft = proxyPort?.value || "8118";
+  };
+  if (proxyEnabled) proxyEnabled.addEventListener("change", () => {
+    rememberProxyDraft();
+    renderConfig();
+  });
+  if (proxyHost) proxyHost.addEventListener("input", rememberProxyDraft);
+  if (proxyPort) proxyPort.addEventListener("input", rememberProxyDraft);
 
   // -- Hermes -> WeChat end-to-end delivery check -----------------------
   const notifyCheck = $("#notify-check");

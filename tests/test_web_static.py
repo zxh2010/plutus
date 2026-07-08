@@ -107,11 +107,51 @@ const gmailHtml = _mailWizard(cfg);
 if (!gmailHtml.includes('value="user@gmail.com"')) {
   throw new Error("switching back to the configured provider should restore its email");
 }
+if (!gmailHtml.includes("网络代理")) {
+  throw new Error("Gmail authorization should expose optional proxy settings");
+}
 if (_mailCollectionCard(cfg, _intakeCard("debit", "借记卡", cfg), _intakeCard("credit", "信用卡", cfg)).includes("gmail_auth.json")) {
   throw new Error("UI should show the provider-neutral mail_auth.json secret file");
 }
 if (!_mailCollectionCard(cfg, _intakeCard("debit", "借记卡", cfg), _intakeCard("credit", "信用卡", cfg)).includes("mail_auth.json")) {
   throw new Error("UI should show mail_auth.json");
+}
+"""
+        )
+
+    def test_proxy_settings_are_gmail_only(self):
+        _run_app_js(
+            """
+const cfg = {
+  mail_provider: "gmail",
+  mail_provider_label: "Gmail",
+  mail_email: "user@gmail.com",
+  gmail_email: "user@gmail.com",
+  mail_proxy_enabled: true,
+  mail_proxy_host: "127.0.0.1",
+  mail_proxy_port: 8118,
+  mail_providers: [
+    { key: "gmail", label: "Gmail" },
+    { key: "qq", label: "QQ 邮箱" },
+    { key: "163", label: "163 邮箱" },
+  ],
+};
+state.mailProviderDraft = "gmail";
+let html = _mailWizard(cfg);
+if (!html.includes("网络代理")) throw new Error("Gmail should show proxy settings");
+if (!html.includes('id="aw-proxy-enabled"')) throw new Error("proxy checkbox is missing");
+if (!html.includes('value="127.0.0.1"')) throw new Error("proxy host should use configured value");
+
+state.mailProviderDraft = "qq";
+html = _mailWizard(cfg);
+if (html.includes("网络代理") || html.includes("aw-proxy-enabled")) {
+  throw new Error("QQ should not show proxy settings");
+}
+
+state.mailProviderDraft = "163";
+html = _mailWizard(cfg);
+if (html.includes("网络代理") || html.includes("aw-proxy-enabled")) {
+  throw new Error("163 should not show proxy settings");
 }
 """
         )

@@ -154,11 +154,26 @@ def provider_label(provider: str) -> str:
     return PROVIDERS.get(provider, {}).get("label", provider)
 
 
+def _proxy_cfg(cfg: dict, mail: Optional[dict] = None) -> dict:
+    mail = mail or _mail_cfg(cfg)
+    port = int(mail.get("proxy_port") or (cfg.get("proxy", {}) or {}).get("port") or 8118)
+    if mail["provider"] != "gmail":
+        return {"enabled": False, "host": "", "port": port}
+
+    if "proxy_enabled" in mail:
+        host = str(mail.get("proxy_host") or "").strip()
+        return {"enabled": bool(mail.get("proxy_enabled")) and bool(host), "host": host, "port": port}
+
+    proxy = cfg.get("proxy", {}) or {}
+    host = str(proxy.get("host") or "").strip()
+    return {"enabled": bool(host), "host": host, "port": port}
+
+
 def connect(cfg: dict) -> imaplib.IMAP4:
     g = _mail_cfg(cfg)
-    proxy = cfg.get("proxy", {})
+    proxy = _proxy_cfg(cfg, g)
     host, port = g.get("imap_host", "imap.gmail.com"), int(g.get("imap_port", 993))
-    if proxy.get("host"):
+    if proxy["enabled"]:
         m = _make_proxy_imap(proxy["host"], int(proxy["port"]), host, port)
     else:
         m = imaplib.IMAP4_SSL(host, port)

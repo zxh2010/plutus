@@ -19,8 +19,9 @@ query = "from:cmbchina.com newer_than:400d"
 # Legacy [gmail] configs are still accepted for existing installs.
 
 [proxy]
-# Optional HTTP CONNECT proxy to tunnel IMAP.
-# Leave host = "" to connect directly.
+# Optional HTTP CONNECT proxy for Gmail IMAP only.
+# QQ and 163 mailboxes connect directly even when this section is filled.
+# Leave host = "" to connect to Gmail directly.
 host = ""
 port = 8118
 
