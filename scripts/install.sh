@@ -241,4 +241,4 @@ raise SystemExit(0 if response.status == 200 else 1)
 fi
 
 note "installation complete"
-echo "Open http://127.0.0.1:8973/#config to authorize Gmail."
+echo "Open http://127.0.0.1:8973/#config to authorize or check your mailbox."

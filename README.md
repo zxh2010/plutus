@@ -79,7 +79,7 @@ SQLite 本地账本
 - Web 控制台和 Hermes MCP 通过同一套本地 API 读写账本。
 - 用户在微信中的查询或纠正，由 Hermes 调用 Plutus MCP 写回本地数据库。
 
-## 2. 一键安装
+## 2. 一键安装 / 更新
 
 前置条件：
 
@@ -90,13 +90,19 @@ SQLite 本地账本
 - 已有 QQ 邮箱、163 邮箱或 Gmail，用于接收招商银行交易邮件
 - 招商银行已开启“一卡通账户变动通知”和“每日信用管家”的 Email 通知
 
-把下面这句话发给 Hermes：
+首次安装，把下面这句话发给 Hermes：
 
 ```text
 帮我安装 Plutus：https://raw.githubusercontent.com/zxh2010/plutus/main/docs/install.md
 ```
 
-Hermes 会自动：
+后续更新，把下面这句话发给 Hermes：
+
+```text
+帮我更新 Plutus：https://raw.githubusercontent.com/zxh2010/plutus/main/docs/install.md
+```
+
+Hermes 会自动安装或更新：
 
 1. 将 Plutus 安装到 `~/.plutus`。
 2. 创建 Python 虚拟环境和本地配置。
@@ -104,6 +110,12 @@ Hermes 会自动：
 4. 注册 Plutus MCP。
 5. 安装并启动 daemon 与 Web 服务。
 6. 检查 Hermes 微信目标、数据库和服务状态。
+
+更新时会执行 `git pull --ff-only` 和安装自检，但不会覆盖本地数据：
+
+- `~/.plutus/config.toml`
+- `~/.plutus/plutus.db`
+- `~/.plutus/secrets/mail_auth.json`
 
 安装完成后，打开：
 

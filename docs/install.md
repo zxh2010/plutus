@@ -1,11 +1,17 @@
-# Plutus 安装指南
+# Plutus 安装 / 更新指南
 
 ## 给用户
 
-把下面这句话发给 Hermes：
+首次安装，把下面这句话发给 Hermes：
 
 ```text
 帮我安装 Plutus：https://raw.githubusercontent.com/zxh2010/plutus/main/docs/install.md
+```
+
+后续更新，把下面这句话发给 Hermes：
+
+```text
+帮我更新 Plutus：https://raw.githubusercontent.com/zxh2010/plutus/main/docs/install.md
 ```
 
 Plutus 当前仅支持 macOS。它通过邮箱 IMAP 读取招商银行交易邮件，将账本保存在本机，并使用 Hermes 完成 AI 分类和微信通知。当前支持 QQ 邮箱、163 邮箱和 Gmail。
@@ -55,13 +61,13 @@ hermes send --list weixin --json
 
 默认安装目录固定为 `~/.plutus`。
 
-首次安装时执行：
+如果 `~/.plutus` 不存在，执行首次安装：
 
 ```bash
 git clone https://github.com/zxh2010/plutus.git ~/.plutus
 ```
 
-如果目录已经存在，先检查工作区：
+如果 `~/.plutus` 已存在，按更新处理。先检查工作区：
 
 ```bash
 git -C ~/.plutus status --short
@@ -74,6 +80,12 @@ git -C ~/.plutus pull --ff-only
 ```
 
 如果存在本地修改，不得丢弃或覆盖。停止安装，并向用户说明哪些文件被修改。
+
+更新必须保留以下本地数据：
+
+- `~/.plutus/config.toml`
+- `~/.plutus/plutus.db`
+- `~/.plutus/secrets/`
 
 ### 第三步：执行安装
 
