@@ -183,6 +183,66 @@ def test_documented_default_directory_and_url():
     )
 
 
+def test_launchd_installer_retries_transient_bootstrap_failure():
+    with tempfile.TemporaryDirectory() as tmp:
+        home = Path(tmp) / "home"
+        bin_dir = Path(tmp) / "bin"
+        home.mkdir()
+        bin_dir.mkdir()
+        root = _copy_repo(home)
+        venv_python = root / ".venv" / "bin" / "python3"
+        venv_python.parent.mkdir(parents=True)
+        venv_python.symlink_to(sys.executable)
+
+        calls = Path(tmp) / "launchctl.calls"
+        state = Path(tmp) / "launchctl.state"
+        (bin_dir / "id").write_text("#!/bin/bash\necho 501\n", encoding="utf-8")
+        (bin_dir / "plutil").write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
+        (bin_dir / "launchctl").write_text(f"""#!/bin/bash
+set -e
+echo "$@" >> "{calls}"
+if [ "$1" = "bootout" ]; then
+  exit 0
+fi
+if [ "$1" = "bootstrap" ]; then
+  count=0
+  [ -f "{state}" ] && count="$(cat "{state}")"
+  count=$((count + 1))
+  echo "$count" > "{state}"
+  if [ "$count" -eq 1 ]; then
+    echo "Input/output error" >&2
+    exit 5
+  fi
+  exit 0
+fi
+if [ "$1" = "print" ]; then
+  exit 0
+fi
+exit 0
+""", encoding="utf-8")
+        for tool in ("id", "plutil", "launchctl"):
+            (bin_dir / tool).chmod(0o755)
+        env = os.environ.copy()
+        env.update({
+            "HOME": str(home),
+            "PATH": f"{bin_dir}:{env.get('PATH', '')}",
+        })
+
+        result = subprocess.run(
+            ["bash", str(root / "scripts" / "install_launchd.sh")],
+            cwd=home,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        assert result.returncode == 0, result.stderr
+        call_text = calls.read_text(encoding="utf-8")
+        assert call_text.count("bootstrap gui/501") >= 2
+        assert "retrying launchctl bootstrap" in result.stderr
+
+
 def _main() -> int:
     tests = [value for name, value in sorted(globals().items())
              if name.startswith("test_")]
