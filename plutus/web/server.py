@@ -245,7 +245,8 @@ class Handler(BaseHTTPRequestHandler):
                 for ct in ("credit", "debit")
             }
             return self._send_json({
-                # mail collection. gmail_* fields are kept for the current UI.
+                # Provider-aware mail collection. gmail_* fields are retained
+                # for compatibility with older UI/tests.
                 "mail_provider": mail["provider"],
                 "mail_provider_label": gmail_client.provider_label(mail["provider"]),
                 "mail_providers": _mail_provider_options(),
@@ -311,16 +312,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(notify.check_wechat(config.load()))
 
         if path == "/api/gmail_auth":
-            # Save the provider + email + app password from the in-page wizard
-            # to a gitignored secrets file (config.load picks it up live), then
-            # verify by connecting. Current UI omits provider, which keeps Gmail.
+            # Legacy route name retained for compatibility. Save the provider,
+            # email, and authorization code from the in-page wizard to a
+            # gitignored secrets file (config.load picks it up live), then
+            # verify by connecting.
             provider = (body.get("provider") or "gmail").strip()
             if provider not in gmail_client.PROVIDERS:
                 return self._send_json({"ok": False, "error": "不支持的邮箱类型"})
             email = (body.get("email") or "").strip()
             pw = (body.get("app_password") or "").replace(" ", "").strip()
             if not email or not pw:
-                return self._send_json({"ok": False, "error": "邮箱和应用专用密码都要填"})
+                return self._send_json({"ok": False, "error": "邮箱和授权码都要填"})
             Path("secrets").mkdir(exist_ok=True)
             f = Path("secrets/mail_auth.json")
             f.write_text(json.dumps({

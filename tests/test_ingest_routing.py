@@ -82,6 +82,30 @@ def test_sms_ingest_entry_point_is_removed():
     assert not hasattr(ingest, "run_sms")
 
 
+def test_build_query_prefers_mail_query_over_legacy_gmail_query():
+    cfg = {
+        "mail": {"query": "from:new@example.com newer_than:30d"},
+        "gmail": {"query": "from:old@example.com newer_than:400d"},
+    }
+    assert ingest._build_query(cfg, None, False, ["fallback@example.com"]) == (
+        "from:new@example.com newer_than:30d"
+    )
+
+
+def test_build_query_keeps_legacy_gmail_query_for_old_configs():
+    cfg = {"gmail": {"query": "from:old@example.com newer_than:400d"}}
+    assert ingest._build_query(cfg, None, False, ["fallback@example.com"]) == (
+        "from:old@example.com newer_than:400d"
+    )
+
+
+def test_build_query_uses_sender_base_when_no_config_query():
+    cfg = {"mail": {}, "gmail": {}}
+    assert ingest._build_query(cfg, None, False, ["a@example.com", "b@example.com"]) == (
+        "(from:a@example.com OR from:b@example.com)"
+    )
+
+
 def _main() -> int:
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

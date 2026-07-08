@@ -22,7 +22,7 @@ from . import credit_daily
 class RawEmail:
     """A fetched email handed to an EmailParser's match/parse. `html` is the
     email HTML when present, `text` the de-tagged fallback; `source_msg_id` is the
-    Gmail message id used for dedup and the transactions FK."""
+    stable mail message id used for dedup and the transactions FK."""
     html: Optional[str]
     text: str
     source_msg_id: str
@@ -63,7 +63,7 @@ def email_parsers() -> list[EmailParser]:
 
 def senders_of(parsers) -> list:
     """Sorted, de-duplicated from-addresses across the given email parsers — the
-    single source of truth for the Gmail search query and the connectivity
+    single source of truth for the mail search query and the connectivity
     self-check, so adding a bank's parser automatically widens both."""
     return sorted({s for p in parsers for s in p.senders})
 

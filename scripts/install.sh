@@ -139,11 +139,10 @@ if [ ! -f "$ROOT/config.toml" ]; then
     mkdir -p "$ROOT/secrets"
     chmod 700 "$ROOT/secrets"
     cat > "$ROOT/config.toml" <<EOF
-[gmail]
-imap_host = "imap.gmail.com"
-imap_port = 993
+[mail]
+provider = "qq"
 email = ""
-app_password_file = "secrets/app_password.txt"
+app_password_file = "secrets/mail_auth_code.txt"
 query = "from:cmbchina.com newer_than:400d"
 
 [proxy]

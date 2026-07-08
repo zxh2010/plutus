@@ -23,12 +23,12 @@ PROTOCOL = "2025-06-18"
 
 
 def _base() -> str:
-    cfg = cfgmod.load(str(ROOT / "config.toml"))
+    try:
+        cfg = cfgmod.load(str(ROOT / "config.toml"))
+    except FileNotFoundError:
+        cfg = {}
     port = int(cfg.get("web", {}).get("port", 8973))
     return f"http://127.0.0.1:{port}"
-
-
-WEB = _base()
 
 
 # -- HTTP client to the Plutus web service --------------------------------
@@ -36,7 +36,7 @@ WEB = _base()
 def _req(method: str, path: str, body=None) -> dict:
     data = json.dumps(body).encode("utf-8") if body is not None else None
     headers = {"Content-Type": "application/json"} if data is not None else {}
-    req = urllib.request.Request(WEB + path, data=data, headers=headers, method=method)
+    req = urllib.request.Request(_base() + path, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.loads(r.read().decode("utf-8"))

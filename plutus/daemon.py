@@ -1,5 +1,6 @@
-"""Plutus daemon: poll Gmail, ingest new emails, AI-classify brand-new merchants,
-and push the new transactions to WeChat. Runs forever; one cycle per interval.
+"""Plutus daemon: poll the configured mailbox, ingest new emails, AI-classify
+brand-new merchants, and push the new transactions to WeChat. Runs forever; one
+cycle per interval.
 
 Confirmations happen on WeChat (the hermes agent calls the Plutus MCP tools) or
 in the web console — the daemon only ingests, suggests, and notifies.
@@ -18,7 +19,7 @@ def run_once(cfg: dict) -> None:
     # 1) Collect credit, debit, and income records from email.
     try:
         ingest.run(config_path="config.toml", incremental=True)
-    except Exception as exc:  # IMAP/Gmail hiccups must not block notifications.
+    except Exception as exc:  # IMAP hiccups must not block notifications.
         print(f"[email] skipped: {exc}")
         traceback.print_exc()
 

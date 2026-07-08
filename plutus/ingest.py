@@ -27,7 +27,7 @@ def _build_query(cfg: dict, since: str | None, incremental: bool, senders: list)
         return f"{base} after:{since}"
     if incremental:
         return base  # UID watermark does the windowing
-    return cfg["gmail"].get("query", base)
+    return (cfg.get("mail") or {}).get("query") or (cfg.get("gmail") or {}).get("query", base)
 
 
 def _email_parsers_for(sources: dict) -> list:
@@ -173,7 +173,7 @@ def _save_ai_record(conn, mid: str, raw_text: str, received: datetime,
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.toml")
-    ap.add_argument("--since", help="Gmail date YYYY/MM/DD for backfill")
+    ap.add_argument("--since", help="mail search date YYYY/MM/DD for backfill")
     ap.add_argument("--limit", type=int, help="process only the newest N matches")
     ap.add_argument("--incremental", action="store_true", help="only UIDs above watermark")
     args = ap.parse_args()

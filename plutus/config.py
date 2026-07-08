@@ -9,8 +9,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-# UI-managed mail credentials saved from the settings page; override config.toml
-# so a user can authorize entirely in the browser (see web POST /api/gmail_auth).
+# UI-managed mail credentials saved from the settings page override config.toml.
+# The HTTP route still uses the legacy /api/gmail_auth path for compatibility.
 _MAIL_AUTH_FILE = "secrets/mail_auth.json"
 
 
@@ -101,9 +101,9 @@ def load(path: str = "config.toml") -> dict:
                     gmail["email"] = ui["email"].strip()
                 if ui.get("app_password"):
                     gmail["app_password"] = ui["app_password"].strip()
-                # The current settings UI writes Gmail-only credentials. Do not
-                # let that local file override an explicit domestic provider
-                # such as QQ or 163; provider-aware UI writes provider above.
+                # Legacy UI files had no provider and therefore meant Gmail.
+                # Do not let such files override an explicit domestic provider
+                # such as QQ or 163; provider-aware UI files write provider.
                 if (mail.get("provider") or "gmail") == "gmail":
                     if ui.get("email"):
                         mail["email"] = ui["email"].strip()

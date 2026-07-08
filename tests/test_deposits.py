@@ -8,8 +8,10 @@ Runnable with pytest or directly.
 from __future__ import annotations
 
 import os
+import importlib
 import sqlite3
 import sys
+import tempfile
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -63,6 +65,17 @@ def test_tool_text_and_miss():
     assert "报销" in hit and "示例公司" in hit and "1322.00" in hit
     miss = mcp_server.call_tool("find_deposits", {"amount": 999.99})
     assert "没有" in miss
+
+
+def test_mcp_server_import_does_not_require_config_toml():
+    old_cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.chdir(tmp)
+            module = importlib.reload(mcp_server)
+        finally:
+            os.chdir(old_cwd)
+    assert module._base() == "http://127.0.0.1:8973"
 
 
 def _main() -> int:

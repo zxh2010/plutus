@@ -774,38 +774,6 @@ function _railNode(step, val, state, lead) {
     `<span class="rail-step">${step}</span><span class="rail-val">${val}</span></div>`;
 }
 
-function _pipeCard(c) {
-  const recheck = c.canCheck
-    ? `<button class="btn btn-ghost" data-recheck style="padding:5px 12px;font-size:12.5px">重新自检</button>`
-    : "";
-  const guide = c.guideSummary ? `<details class="guide" ${c.guideOpen ? "open" : ""}>
-      <summary>${c.guideSummary}</summary>
-      <div class="guide-body">${c.guide}</div>
-    </details>` : "";
-  return `<div class="pipe" data-pipe="${c.cardType}">
-    <div class="pipe-head">
-      <div class="pipe-title"><div class="pipe-name">${c.name}</div>
-        <div class="pipe-sub">${c.sub}</div></div>
-      <div class="seal ${c.seal.cls}" data-seal>${c.seal.ch}</div>
-    </div>
-    <div class="intake-rail" data-rail>
-      ${_railNode("① 方式", c.method, "done", "on")}
-      ${_railNode("② 授权", c.auth.val, c.auth.state, c.auth.lead)}
-      ${_railNode("③ 连通", c.conn.val, c.conn.state, "")}
-    </div>
-    <div class="pipe-foot">
-      <span class="pipe-fresh">最近一笔 <b>${c.fresh || "—"}</b></span>
-      ${recheck}
-      <span class="check-out" data-out>${c.outInit || ""}</span>
-    </div>
-    ${guide}
-    ${c.reminderTip ? `<details class="guide">
-      <summary>${c.reminderTip.summary}</summary>
-      <div class="guide-body">${c.reminderTip.body}</div>
-    </details>` : ""}
-  </div>`;
-}
-
 // In-page mail authorization wizard. Provider-specific links help the user
 // create an app password / authorization code; "保存并连接" validates via IMAP.
 function _mailHelp(provider) {
@@ -869,27 +837,6 @@ function _mailWizard(cfg) {
 
 function _mailEditing() {
   return !!state.mailProviderDraft || !!state.mailEmailDraftProvider;
-}
-
-function _mailSettingsCard(cfg) {
-  const ready = !!cfg.mail_configured || !!cfg.gmail_configured;
-  const providerLabel = cfg.mail_provider_label || "Gmail";
-  const email = cfg.mail_email || cfg.gmail_email || "未配置";
-  const editing = _mailEditing();
-  const sub = ready
-    ? `当前生效：${esc(providerLabel)}<span class="sub"> · ${esc(email)}</span>`
-    : `<span style="color:var(--red)">未授权</span>`;
-  return `<div class="pipe" data-mail-settings style="grid-column:1/-1">
-    <div class="pipe-head">
-      <div class="pipe-title"><div class="pipe-name">邮箱账号</div>
-        <div class="pipe-sub">${sub}</div></div>
-    </div>
-    ${editing ? `<div class="check-out">正在配置新邮箱，保存成功后生效；当前自检仍以已保存邮箱为准。</div>` : ""}
-    <details class="guide" open>
-      <summary>${ready ? "更换邮箱账号 / 重新授权" : "如何授权 · 3 步页内完成"}</summary>
-      <div class="guide-body">${_mailWizard(cfg)}</div>
-    </details>
-  </div>`;
 }
 
 function _mailSourceRow(c) {
