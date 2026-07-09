@@ -243,6 +243,174 @@ exit 0
         assert "retrying launchctl bootstrap" in result.stderr
 
 
+def _git(root: Path, *args: str):
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _prepare_update_checkout(base: Path) -> tuple[Path, Path]:
+    source = base / "source"
+    home = base / "home"
+    source.mkdir()
+    home.mkdir()
+    shutil.copytree(
+        ROOT,
+        source,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns(
+            ".git", ".venv", "__pycache__", "*.pyc", "config.toml",
+            "plutus.db", "plutus.db-*", "secrets", "fixtures",
+        ),
+    )
+    _git(source, "init", "-b", "main")
+    _git(source, "config", "user.email", "tests@example.com")
+    _git(source, "config", "user.name", "Plutus Tests")
+    _git(source, "add", ".")
+    _git(source, "commit", "-m", "initial")
+    target = home / ".plutus"
+    subprocess.run(
+        ["git", "clone", "--quiet", str(source), str(target)],
+        check=True,
+    )
+    return home, source
+
+
+def _configure_update_target(home: Path) -> tuple[Path, Path]:
+    target = home / ".plutus"
+    fake_hermes = home / "hermes"
+    calls = home / "hermes.calls"
+    fake_hermes.write_text(
+        f"#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"{calls}\"\nexit 0\n",
+        encoding="utf-8",
+    )
+    fake_hermes.chmod(0o755)
+    venv_python = target / ".venv" / "bin" / "python3"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.symlink_to(sys.executable)
+    (target / "config.toml").write_text(
+        f"""[notify]
+hermes_bin = "{fake_hermes}"
+weixin_target = "weixin:user@example"
+""",
+        encoding="utf-8",
+    )
+    return target, calls
+
+
+def test_auto_update_fast_forwards_refreshes_and_notifies():
+    with tempfile.TemporaryDirectory() as tmp:
+        home, source = _prepare_update_checkout(Path(tmp))
+        target, calls = _configure_update_target(home)
+        before = _git(target, "rev-parse", "HEAD").stdout.strip()
+
+        install_marker = home / "install.refreshed"
+        install = source / "scripts" / "install.sh"
+        install.write_text(
+            f"#!/bin/bash\nprintf '%s' \"$PLUTUS_SKIP_UPDATER_RELOAD\" > \"{install_marker}\"\n",
+            encoding="utf-8",
+        )
+        install.chmod(0o755)
+        _git(source, "add", "scripts/install.sh")
+        _git(source, "commit", "-m", "update")
+        after = _git(source, "rev-parse", "HEAD").stdout.strip()
+
+        result = subprocess.run(
+            ["bash", str(target / "scripts" / "update.sh")],
+            cwd=home,
+            env={
+                **os.environ, "HOME": str(home),
+                "PLUTUS_EXPECTED_ORIGIN": str(source),
+            },
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert _git(target, "rev-parse", "HEAD").stdout.strip() == after
+        assert before != after
+        assert install_marker.read_text(encoding="utf-8") == "1"
+        assert "Plutus 已自动更新" in calls.read_text(encoding="utf-8")
+
+
+def test_auto_update_skips_dirty_checkout_and_notifies():
+    with tempfile.TemporaryDirectory() as tmp:
+        home, source = _prepare_update_checkout(Path(tmp))
+        target, calls = _configure_update_target(home)
+        readme = target / "README.md"
+        readme.write_text(readme.read_text(encoding="utf-8") + "\nlocal edit\n",
+                          encoding="utf-8")
+
+        result = subprocess.run(
+            ["bash", str(target / "scripts" / "update.sh")],
+            cwd=home,
+            env={
+                **os.environ, "HOME": str(home),
+                "PLUTUS_EXPECTED_ORIGIN": str(source),
+            },
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        assert result.returncode != 0
+        assert "local changes detected" in result.stdout
+        assert "自动更新失败" in calls.read_text(encoding="utf-8")
+
+
+def test_auto_update_retries_install_refresh_after_failure():
+    with tempfile.TemporaryDirectory() as tmp:
+        home, source = _prepare_update_checkout(Path(tmp))
+        target, _calls = _configure_update_target(home)
+
+        attempts = home / "install.attempts"
+        install = source / "scripts" / "install.sh"
+        install.write_text(
+            f"""#!/bin/bash
+count=0
+[ -f "{attempts}" ] && count="$(cat "{attempts}")"
+count=$((count + 1))
+printf '%s' "$count" > "{attempts}"
+[ "$count" -gt 1 ]
+""",
+            encoding="utf-8",
+        )
+        install.chmod(0o755)
+        _git(source, "add", "scripts/install.sh")
+        _git(source, "commit", "-m", "failing update")
+
+        first = subprocess.run(
+            ["bash", str(target / "scripts" / "update.sh")],
+            cwd=home,
+            env={
+                **os.environ, "HOME": str(home),
+                "PLUTUS_EXPECTED_ORIGIN": str(source),
+            },
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        second = subprocess.run(
+            ["bash", str(target / "scripts" / "update.sh")],
+            cwd=home,
+            env={
+                **os.environ, "HOME": str(home),
+                "PLUTUS_EXPECTED_ORIGIN": str(source),
+            },
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        assert first.returncode != 0
+        assert second.returncode == 0, second.stderr
+        assert attempts.read_text(encoding="utf-8") == "2"
+
+
 def _main() -> int:
     tests = [value for name, value in sorted(globals().items())
              if name.startswith("test_")]

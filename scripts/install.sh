@@ -237,6 +237,7 @@ raise SystemExit(0 if response.status == 200 else 1)
   "$HERMES" mcp test plutus
   launchctl print "gui/$(id -u)/ai.plutus.web" >/dev/null
   launchctl print "gui/$(id -u)/ai.plutus.daemon" >/dev/null
+  launchctl print "gui/$(id -u)/ai.plutus.updater" >/dev/null
 fi
 
 note "installation complete"

@@ -29,7 +29,12 @@ bootstrap_job() {
   launchctl print "$domain/$label" >/dev/null
 }
 
-for label in ai.plutus.daemon ai.plutus.web; do
+for label in ai.plutus.daemon ai.plutus.web ai.plutus.updater; do
+  if [ "$label" = "ai.plutus.updater" ] \
+     && [ "${PLUTUS_SKIP_UPDATER_RELOAD:-0}" = "1" ]; then
+    echo "preserved running $label"
+    continue
+  fi
   src="$ROOT/deploy/$label.plist"
   dst="$AGENTDIR/$label.plist"
   sed -e "s#__EXEC__#$EXEC#g" -e "s#__ROOT__#$ROOT#g" \

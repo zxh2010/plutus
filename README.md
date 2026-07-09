@@ -98,7 +98,8 @@ SQLite 本地账本
 帮我安装 Plutus：https://raw.githubusercontent.com/zxh2010/plutus/main/docs/install.md
 ```
 
-后续更新，把下面这句话发给 Hermes：
+安装后默认每 6 小时自动检查并安全更新。也可以把下面这句话发给 Hermes，
+立即手动更新：
 
 ```text
 帮我更新 Plutus：https://raw.githubusercontent.com/zxh2010/plutus/main/docs/install.md
@@ -110,7 +111,7 @@ Hermes 会自动安装或更新：
 2. 创建 Python 虚拟环境和本地配置。
 3. 初始化 SQLite 账本。
 4. 注册 Plutus MCP。
-5. 安装并启动 daemon 与 Web 服务。
+5. 安装并启动 daemon、Web 与自动更新服务。
 6. 检查 Hermes 微信目标、数据库和服务状态。
 
 更新时会执行 `git pull --ff-only` 和安装自检，但不会覆盖本地数据：
@@ -118,6 +119,11 @@ Hermes 会自动安装或更新：
 - `~/.plutus/config.toml`
 - `~/.plutus/plutus.db`
 - `~/.plutus/secrets/mail_auth.json`
+
+自动更新仅允许当前安装从 `origin/main` 快进；发现本地修改、分支不符或无法快进时会停止，
+并通过微信提示。成功更新也会发送版本变化通知，没有更新时保持安静。更新日志位于
+`~/Library/Logs/plutus/update.log` 和 `update.err.log`。禁用方式及安全边界见
+[`docs/install.md`](docs/install.md)。
 
 安装完成后，打开：
 
