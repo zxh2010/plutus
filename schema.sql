@@ -55,6 +55,16 @@ CREATE INDEX IF NOT EXISTS idx_txn_card     ON transactions(card_type);
 CREATE INDEX IF NOT EXISTS idx_txn_category ON transactions(category);
 CREATE INDEX IF NOT EXISTS idx_txn_mkey     ON transactions(merchant_key);
 
+-- Structured, non-executing operation advice returned by Hermes.
+CREATE TABLE IF NOT EXISTS operation_suggestions (
+  transaction_id         INTEGER PRIMARY KEY REFERENCES transactions(id) ON DELETE CASCADE,
+  operation              TEXT NOT NULL CHECK(operation IN ('merge','offset','void','split')),
+  related_transaction_ids TEXT NOT NULL,   -- JSON array of validated live transaction IDs
+  reason                 TEXT NOT NULL,
+  created_at             INTEGER,
+  updated_at             INTEGER
+);
+
 -- Classification is fully AI-driven (AI suggestion + user-taught knowledge +
 -- manual confirm); there are no deterministic merchant/keyword rule tables.
 

@@ -125,6 +125,35 @@ def tool_definitions() -> list[dict]:
             },
         },
         {
+            "name": "apply_operation",
+            "description": (
+                "仅当用户在当前微信对话中明确确认后，执行合并、抵消、不计入或拆分。"
+                "不要根据系统建议自行调用。merge/offset 需要至少两个 transaction_ids；"
+                "void 需要一个；split 需要一个 transaction_id 和 amounts，且拆分合计必须等于原金额。"
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "enum": ["merge", "offset", "void", "split"],
+                    },
+                    "transaction_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                    },
+                    "amounts": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                    },
+                    "category": {"type": "string"},
+                    "note": {"type": "string"},
+                    "month": {"type": "string"},
+                },
+                "required": ["operation", "transaction_ids"],
+            },
+        },
+        {
             "name": "teach",
             "description": (
                 "记录用户教给系统的知识，作为以后分类的上下文。"
@@ -201,6 +230,43 @@ def call_tool(name: str, args: dict) -> str:
     if name == "add_note":
         _post(f"/api/transactions/{int(args['transaction_id'])}/note", {"note": args.get("note", "")})
         return f"已为 #{args['transaction_id']} 添加备注。"
+
+    if name == "apply_operation":
+        operation = args.get("operation")
+        try:
+            ids = [int(value) for value in args.get("transaction_ids", [])]
+        except (TypeError, ValueError):
+            return "交易 ID 无效，未执行。"
+        if operation in {"merge", "offset"}:
+            if len(ids) < 2:
+                return "合并或抵消至少需要两笔交易，未执行。"
+            res = _post("/api/transactions/merge", {
+                "ids": ids,
+                "category": args.get("category"),
+                "note": args.get("note"),
+                "month": args.get("month"),
+                "expected_operation": operation,
+            })
+            if not res.get("ok"):
+                return f"操作失败：{res.get('error', '未知错误')}"
+            actual = "抵消" if res.get("offset") else "合并"
+            return f"已{actual}交易 {'、'.join(f'#{value}' for value in ids)}。"
+        if operation == "void":
+            if len(ids) != 1:
+                return "不计入操作只能指定一笔交易，未执行。"
+            _post(f"/api/transactions/{ids[0]}/void", {"voided": True})
+            return f"已将 #{ids[0]} 设为不计入统计。"
+        if operation == "split":
+            if len(ids) != 1:
+                return "拆分操作只能指定一笔交易，未执行。"
+            amounts = args.get("amounts")
+            if not isinstance(amounts, list) or len(amounts) < 2:
+                return "拆分需要至少两个金额，未执行。"
+            res = _post(f"/api/transactions/{ids[0]}/split", {"amounts": amounts})
+            if not res.get("ok"):
+                return f"拆分失败：{res.get('error', '未知错误')}"
+            return f"已将 #{ids[0]} 拆分为 {res.get('parts', len(amounts))} 笔。"
+        return "不支持的账务操作，未执行。"
 
     if name == "teach":
         _post("/api/knowledge", {

@@ -16,6 +16,12 @@ from . import store
 
 UNCERTAIN_STATUSES = {"pending", "suggested"}
 WECHAT_PROBE_MESSAGE = "Plutus 微信通道测试成功。"
+OPERATION_LABELS = {
+    "merge": "合并",
+    "offset": "抵消",
+    "void": "不计入",
+    "split": "拆分",
+}
 
 
 def _card(ct: str, last4: str) -> str:
@@ -29,6 +35,7 @@ def format_message(rows: list) -> str:
 
     lines = [f"📒 Plutus · 新交易 {len(rows)} 笔"]
     need_confirm = 0
+    shown_advice = set()
     for (ct, last4), items in groups.items():
         lines.append(f"\n{_card(ct, last4)}")
         for r in items:
@@ -41,6 +48,24 @@ def format_message(rows: list) -> str:
                 need_confirm += 1
             merchant = (r["merchant_raw"] or "")[:18]
             lines.append(f" #{r['id']} ¥{r['amount']:.2f} {merchant} {tag}")
+            operation = r["suggested_operation"] if "suggested_operation" in r.keys() else None
+            related_json = r["suggested_related_ids"] if "suggested_related_ids" in r.keys() else None
+            if operation in OPERATION_LABELS and related_json:
+                try:
+                    related_ids = [int(value) for value in json.loads(related_json)]
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    related_ids = []
+                advice_key = (operation, tuple(related_ids))
+                if related_ids and advice_key not in shown_advice:
+                    shown_advice.add(advice_key)
+                    id_text = " ".join(f"#{value}" for value in related_ids)
+                    reason = r["suggested_reason"] or "Hermes 识别到可能的账务操作"
+                    lines.append(
+                        f"   💡 建议{OPERATION_LABELS[operation]} {id_text}：{reason}"
+                    )
+                    lines.append(
+                        f"   如需执行，请回复“确认{OPERATION_LABELS[operation]} {id_text}”"
+                    )
     if need_confirm:
         lines.append(f"\n其中 {need_confirm} 笔需你确认。回复即可改，例：「#{rows[0]['id']} 改成孩子相关」")
     return "\n".join(lines)
@@ -122,7 +147,12 @@ def check_wechat(cfg: dict) -> dict:
 
 def notify_new(conn, cfg: dict, dry: bool = False) -> dict:
     rows = conn.execute(
-        "SELECT * FROM transactions WHERE notify_status IS NULL AND voided=0 "
+        """SELECT t.*, s.operation AS suggested_operation,
+                  s.related_transaction_ids AS suggested_related_ids,
+                  s.reason AS suggested_reason
+           FROM transactions t
+           LEFT JOIN operation_suggestions s ON s.transaction_id=t.id
+           WHERE t.notify_status IS NULL AND t.voided=0 """
         "ORDER BY card_type, txn_time"
     ).fetchall()
     if not rows:

@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from plutus import notify  # noqa: E402
+from plutus import mcp_server, notify  # noqa: E402
 
 
 def _cfg(target: str = "weixin:user@example") -> dict:
@@ -134,6 +134,57 @@ def test_check_handles_timeout():
 
     assert result["ok"] is False
     assert "超时" in result["error"]
+
+
+def test_message_includes_human_readable_operation_advice_once():
+    rows = [
+        {
+            "id": 1, "card_type": "credit", "card_last4": "1234",
+            "status": "suggested", "category": "购物", "merchant_raw": "Shop",
+            "amount": 100.0, "suggested_operation": "offset",
+            "suggested_related_ids": "[1, 2]", "suggested_reason": "Exact refund",
+        },
+        {
+            "id": 2, "card_type": "credit", "card_last4": "1234",
+            "status": "suggested", "category": "购物", "merchant_raw": "Shop",
+            "amount": -100.0, "suggested_operation": "offset",
+            "suggested_related_ids": "[1, 2]", "suggested_reason": "Exact refund",
+        },
+    ]
+
+    text = notify.format_message(rows)
+
+    assert "建议抵消 #1 #2" in text
+    assert "确认抵消 #1 #2" in text
+    assert text.count("建议抵消") == 1
+
+
+def test_wechat_operation_tool_requires_confirmation_and_calls_merge_api():
+    definition = next(
+        item for item in mcp_server.tool_definitions()
+        if item["name"] == "apply_operation"
+    )
+    assert "明确确认" in definition["description"]
+
+    original = mcp_server._post
+    calls = []
+    mcp_server._post = lambda path, body: (
+        calls.append((path, body)) or
+        {"ok": True, "offset": True, "count": 2, "net": 0.0}
+    )
+    try:
+        text = mcp_server.call_tool(
+            "apply_operation",
+            {"operation": "offset", "transaction_ids": [1, 2]},
+        )
+    finally:
+        mcp_server._post = original
+
+    assert "已抵消" in text
+    assert calls == [("/api/transactions/merge", {
+        "ids": [1, 2], "category": None, "note": None, "month": None,
+        "expected_operation": "offset",
+    })]
 
 
 def _main() -> int:

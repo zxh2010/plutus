@@ -79,6 +79,8 @@ SQLite 本地账本
 - Web 控制台和 Hermes MCP 通过同一套本地 API 读写账本。
 - 用户在微信中的查询或纠正，由 Hermes 调用 Plutus MCP 写回本地数据库。
 
+安装前请阅读完整的[隐私与数据处理说明](docs/privacy.md)。
+
 ## 2. 一键安装 / 更新
 
 前置条件：

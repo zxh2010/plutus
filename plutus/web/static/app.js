@@ -241,15 +241,25 @@ async function renderPending() {
     <p class="section-title" style="margin:0">待分类商户 ${rows.length} 个 · 共 ${total} 笔 · ${withAi} 个已有 AI 建议（确认或改正即可，改正会被记住）</p>
     ${showBtn ? `<button class="btn" id="ai-suggest">${status.running ? "🟢 AI 分类中…（点看过程）" : "🪄 让 AI 评估这 " + rows.length + " 个（含重评旧建议）"}</button>` : ""}
   </div>`;
-  const body = rows.length ? rows.map((r) => `
+  const operationLabels = { merge: "合并", offset: "抵消", void: "不计入", split: "拆分" };
+  const body = rows.length ? rows.map((r) => {
+    let operationAdvice = "";
+    if (operationLabels[r.suggested_operation]) {
+      let ids = [];
+      try { ids = JSON.parse(r.suggested_related_ids || "[]"); } catch (_) { ids = []; }
+      const idText = ids.map((id) => `#${id}`).join("、");
+      operationAdvice = `<div class="ms ai-tag">操作建议：${operationLabels[r.suggested_operation]}${idText ? ` ${esc(idText)}` : ""}${r.suggested_operation_reason ? ` · ${esc(r.suggested_operation_reason)}` : ""}（需确认）</div>`;
+    }
+    return `
     <div class="merchant-row" data-mk="${esc(r.merchant_key)}">
       <div class="m-name"><div class="mk">${esc(r.merchant_key)}</div>
-        <div class="ms">例：${esc(r.sample)} · ${r.card === "credit" ? "信用卡" : "借记卡"}${r.suggested ? ` · <span class="ai-tag">AI 建议：${esc(r.suggested)}</span>` : ""}</div></div>
+        <div class="ms">例：${esc(r.sample)} · ${r.card === "credit" ? "信用卡" : "借记卡"}${r.suggested ? ` · <span class="ai-tag">AI 建议：${esc(r.suggested)}</span>` : ""}</div>
+        ${operationAdvice}</div>
       <button class="m-count m-count-btn" title="查看这 ${r.n} 笔明细">${r.n} 笔</button>
       <div class="m-spend">${money(r.spend)}</div>
       <select class="cat-select">${categoryOptions(r.suggested || "")}</select>
       <button class="btn" ${r.suggested ? "" : "disabled"}>${r.suggested ? "确认" : "归类"}</button>
-    </div>`).join("") : `<div class="empty">全部分类完成 🎉 没有待分类的商户了。</div>`;
+    </div>`; }).join("") : `<div class="empty">全部分类完成 🎉 没有待分类的商户了。</div>`;
 
   const candBanner = cands.length ? `
     <div class="cand-banner">

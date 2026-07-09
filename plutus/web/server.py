@@ -367,7 +367,8 @@ class Handler(BaseHTTPRequestHandler):
             with _conn() as c:
                 return self._send_json(store.merge_transactions(
                     c, body.get("ids", []), category=body.get("category") or None,
-                    note=body.get("note") or None, month=body.get("month") or None))
+                    note=body.get("note") or None, month=body.get("month") or None,
+                    expected_operation=body.get("expected_operation") or None))
 
         m = re.match(r"^/api/transactions/(\d+)/split$", path)
         if m:

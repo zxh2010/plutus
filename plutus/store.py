@@ -9,6 +9,18 @@ from typing import Optional
 
 from .models import Transaction
 
+_OPERATION_SUGGESTIONS_SQL = """
+CREATE TABLE IF NOT EXISTS operation_suggestions (
+  transaction_id INTEGER PRIMARY KEY REFERENCES transactions(id) ON DELETE CASCADE,
+  operation TEXT NOT NULL CHECK(operation IN ('merge','offset','void','split')),
+  related_transaction_ids TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  created_at INTEGER,
+  updated_at INTEGER
+)
+"""
+VALID_OPERATIONS = frozenset({"merge", "offset", "void", "split"})
+
 
 def now_ms() -> int:
     return int(time.time() * 1000)
@@ -18,6 +30,9 @@ def get_conn(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # Existing databases are upgraded lazily when the application opens them.
+    conn.execute(_OPERATION_SUGGESTIONS_SQL)
+    conn.commit()
     return conn
 
 
@@ -469,15 +484,20 @@ def pending_merchants(conn) -> list[dict]:
     """Merchants still needing the user: untouched (pending) or AI-suggested
     (suggested). `suggested` carries the AI's guess for the user to confirm."""
     rows = conn.execute(
-        """SELECT merchant_key,
+        """SELECT t.merchant_key,
                   count(*) n,
-                  round(sum(CASE WHEN amount>0 THEN amount ELSE 0 END),2) spend,
-                  max(merchant_raw) sample,
-                  max(card_type) card,
-                  max(CASE WHEN status='suggested' THEN category END) suggested
-           FROM transactions
-           WHERE status IN ('pending','suggested') AND voided=0 AND merchant_key IS NOT NULL
-           GROUP BY merchant_key ORDER BY n DESC"""
+                  round(sum(CASE WHEN t.amount>0 THEN t.amount ELSE 0 END),2) spend,
+                  max(t.merchant_raw) sample,
+                  max(t.card_type) card,
+                  max(CASE WHEN t.status='suggested' THEN t.category END) suggested,
+                  max(s.operation) suggested_operation,
+                  max(s.related_transaction_ids) suggested_related_ids,
+                  max(s.reason) suggested_operation_reason
+           FROM transactions t
+           LEFT JOIN operation_suggestions s ON s.transaction_id=t.id
+           WHERE t.status IN ('pending','suggested') AND t.voided=0
+                 AND t.merchant_key IS NOT NULL
+           GROUP BY t.merchant_key ORDER BY n DESC"""
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -486,6 +506,68 @@ def list_knowledge(conn) -> list[dict]:
     return [dict(r) for r in conn.execute(
         "SELECT id, scope, merchant_key, text, category FROM knowledge ORDER BY updated_at DESC"
     ).fetchall()]
+
+
+def save_operation_suggestion(conn, transaction_id: int, operation: str,
+                              related_transaction_ids: list[int], reason: str) -> dict:
+    """Validate and persist non-executing operation advice from Hermes."""
+    if operation == "none":
+        conn.execute(
+            "DELETE FROM operation_suggestions WHERE transaction_id=?",
+            (transaction_id,),
+        )
+        conn.commit()
+        return {"ok": True}
+    if operation not in VALID_OPERATIONS:
+        return {"ok": False, "error": "invalid operation"}
+
+    try:
+        subject_id = int(transaction_id)
+        related_ids = list(dict.fromkeys(int(value) for value in related_transaction_ids))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "invalid transaction ids"}
+    if subject_id not in related_ids:
+        related_ids.insert(0, subject_id)
+    placeholders = ",".join("?" for _ in related_ids)
+    live_ids = {
+        row["id"] for row in conn.execute(
+            f"SELECT id FROM transactions WHERE voided=0 AND id IN ({placeholders})",
+            related_ids,
+        )
+    }
+    if live_ids != set(related_ids):
+        return {"ok": False, "error": "transaction not found or voided"}
+
+    now = now_ms()
+    conn.execute(
+        """INSERT INTO operation_suggestions
+           (transaction_id, operation, related_transaction_ids, reason, created_at, updated_at)
+           VALUES (?,?,?,?,?,?)
+           ON CONFLICT(transaction_id) DO UPDATE SET
+             operation=excluded.operation,
+             related_transaction_ids=excluded.related_transaction_ids,
+             reason=excluded.reason,
+             updated_at=excluded.updated_at""",
+        (subject_id, operation, json.dumps(related_ids), str(reason).strip(), now, now),
+    )
+    conn.commit()
+    return {"ok": True}
+
+
+def get_operation_suggestion(conn, transaction_id: int) -> Optional[dict]:
+    row = conn.execute(
+        """SELECT transaction_id, operation, related_transaction_ids, reason
+           FROM operation_suggestions WHERE transaction_id=?""",
+        (transaction_id,),
+    ).fetchone()
+    if not row:
+        return None
+    return {
+        "transaction_id": row["transaction_id"],
+        "operation": row["operation"],
+        "related_transaction_ids": json.loads(row["related_transaction_ids"]),
+        "reason": row["reason"],
+    }
 
 
 # ---- writes from the console -------------------------------------------
@@ -612,7 +694,8 @@ def merge_candidates(conn, min_refund: float = 10.0) -> list[dict]:
     return out
 
 
-def merge_transactions(conn, ids: list, category=None, note=None, month=None) -> dict:
+def merge_transactions(conn, ids: list, category=None, note=None, month=None,
+                       expected_operation=None) -> dict:
     """Combine several transactions into one net transaction (e.g. deposit +
     cross-month refund). Originals are voided; the merged row carries the net
     amount and an effective_month so it counts in the chosen month."""
@@ -626,6 +709,8 @@ def merge_transactions(conn, ids: list, category=None, note=None, month=None) ->
         return {"ok": False, "error": "至少选 2 笔未作废的交易"}
 
     net = round(sum(r["amount"] for r in rows), 2)
+    if expected_operation == "offset" and abs(net) >= 0.01:
+        return {"ok": False, "error": f"所选交易净额为 {net:.2f}，不能抵消"}
 
     if abs(net) < 0.01:  # exact offset (e.g. buy + full refund, even cross-merchant) — just void
         for r in rows:

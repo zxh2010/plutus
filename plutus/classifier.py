@@ -18,13 +18,19 @@ from . import store
 
 HERMES = os.path.expanduser("~/.local/bin/hermes")
 UNCERTAIN = "不确定"
+OPERATION_KNOWLEDGE = """账务操作知识（每次都必须评估，但只能建议、不能执行）：
+- merge（合并）：部分退款或押金退回后，将相关交易合成一笔净额；净额不能为零。
+- offset（抵消）：消费与全额退款的合计净额接近零；必须列出全部相关交易 ID。
+- void（不计入）：报销支出、自有账户互转、重复或错误记录等不应进入个人消费统计的单笔交易。
+- split（拆分）：一笔订单明显包含多个不同消费用途；只有证据充分时才建议，具体拆分金额仍需用户提供。
+- none：没有充分证据建议上述操作。所有建议都必须等待用户明确确认。"""
 
 
 def build_context(conn) -> str:
     cats = conn.execute(
         "SELECT name, descr FROM categories WHERE active=1 ORDER BY sort"
     ).fetchall()
-    parts = ["分类清单（含说明）：",
+    parts = [OPERATION_KNOWLEDGE, "", "分类清单（含说明）：",
              *[f"- {r['name']}：{r['descr']}" for r in cats]]
 
     # Memory = only what the user has taught (the knowledge table). Confirmations
@@ -65,14 +71,20 @@ def amount_hint(amounts: list[float]) -> str:
 
 
 def classify_merchants(context: str, items: list) -> dict:
-    """items: list of (name, hint). Returns {name: category}."""
-    lines = "\n".join(f"- {name}（{hint}）" if hint else f"- {name}" for name, hint in items)
+    """Return category and structured operation advice for each merchant."""
+    payload = [
+        {"merchant": name, "transactions": transactions}
+        for name, transactions in items
+    ]
     prompt = (
-        "你是记账分类助手。根据下面的分类清单和已知事实，为每个商户判断它属于哪个分类。\n"
-        "每个商户后括号里是它的笔数/金额提示，请结合它判断（有些规则依赖金额，如某固定金额）。\n"
-        f'只输出一个 JSON 对象：键为商户名（括号前的名称原文），值为分类名（必须从清单里精确选一个）；'
-        f'若无法有把握判断，值填 "{UNCERTAIN}"。不要输出任何多余文字或代码块标记。\n\n'
-        f"{context}\n\n待分类商户：\n{lines}\n"
+        "你是记账分类助手。请逐个商户判断分类，并评估是否需要账务操作。\n"
+        "只输出一个 JSON 对象，键必须是商户名原文，值必须符合："
+        '{"category":"分类名或不确定","operation":"none|merge|offset|void|split",'
+        '"related_transaction_ids":[整数ID],"reason":"简短理由"}。'
+        "分类名必须从清单精确选择；没有充分操作证据时 operation 必须为 none、ID 数组为空。"
+        "不要输出任何多余文字或代码块标记。\n\n"
+        f"{context}\n\n待评估交易：\n"
+        f"{json.dumps(payload, ensure_ascii=False)}\n"
     )
     return _extract_json(_call_hermes(prompt))
 
@@ -97,14 +109,14 @@ def suggest_pending(conn, batch_size: int = 40, log=None, include_suggested: boo
     log = log or (lambda s: None)
 
     from collections import defaultdict
-    amap = defaultdict(list)
+    pending_by_merchant = defaultdict(list)
     statuses = "('pending','suggested')" if include_suggested else "('pending')"
     for r in conn.execute(
-        "SELECT merchant_key, amount FROM transactions "
+        "SELECT merchant_key, id FROM transactions "
         f"WHERE status IN {statuses} AND voided=0 AND merchant_key IS NOT NULL"
     ):
-        amap[r["merchant_key"]].append(r["amount"])
-    merchants = list(amap.keys())
+        pending_by_merchant[r["merchant_key"]].append(r["id"])
+    merchants = list(pending_by_merchant.keys())
     n = len(merchants)
     if not n:
         log("没有待分类的商户。")
@@ -119,20 +131,45 @@ def suggest_pending(conn, batch_size: int = 40, log=None, include_suggested: boo
     decisions: dict[str, str] = {}
     for bi, i in enumerate(range(0, n, batch_size), 1):
         chunk = merchants[i:i + batch_size]
-        items = [(mk, amount_hint(amap[mk])) for mk in chunk]
+        items = []
+        for mk in chunk:
+            transactions = [
+                dict(row) for row in conn.execute(
+                    """SELECT id, amount, txn_time, direction, card_last4
+                       FROM transactions
+                       WHERE merchant_key=? AND voided=0
+                       ORDER BY txn_time DESC, id DESC LIMIT 20""",
+                    (mk,),
+                ).fetchall()
+            ]
+            items.append((mk, transactions))
         log("")
         log(f"[{bi}/{nb}] $ hermes -z  ({len(chunk)} 个商户)")
-        log("  → " + "、".join(f"{mk}（{amount_hint(amap[mk])}）" for mk in chunk[:5])
+        log("  → " + "、".join(chunk[:5])
             + (" …" if len(chunk) > 5 else ""))
         log("  ⟳ 调用 hermes 推理中…")
         res = classify_merchants(context, items)
         log("  ← " + json.dumps(res, ensure_ascii=False)[:800])
         ok = 0
         for mk in chunk:
-            cat = _pick(res, mk)
+            advice = _pick(res, mk)
+            if not isinstance(advice, dict):
+                advice = {}
+            cat = advice.get("category")
             decisions[mk] = cat
             if cat in valid:
                 ok += 1
+            operation = advice.get("operation", "none")
+            related_ids = advice.get("related_transaction_ids", [])
+            reason = advice.get("reason", "")
+            if operation in store.VALID_OPERATIONS and isinstance(related_ids, list):
+                for txn_id in related_ids:
+                    store.save_operation_suggestion(
+                        conn, txn_id, operation, related_ids, reason
+                    )
+            elif operation == "none":
+                for txn_id in pending_by_merchant[mk]:
+                    store.save_operation_suggestion(conn, txn_id, "none", [], "")
         log(f"  ✓ 本批建议 {ok}，不确定 {len(chunk) - ok}")
 
     suggested = uncertain = 0
