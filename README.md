@@ -134,3 +134,15 @@ http://127.0.0.1:8973/#config
 在本地设置页选择邮箱类型，填写邮箱地址和授权码，再运行邮件自检即可。设置页会按 QQ 邮箱、163 邮箱或 Gmail 显示对应授权入口；授权码只保存在 `~/.plutus/secrets/mail_auth.json`，无需发送给 Hermes。
 
 完整安装规则和安全边界见 [`docs/install.md`](docs/install.md)。
+
+## 3. License / 商业授权
+
+Plutus is licensed under the GNU Affero General Public License v3.0 only
+(`AGPL-3.0-only`) from the current version onward.
+
+如果你希望将 Plutus 用于闭源集成、托管服务、企业内部分发、商业产品捆绑、
+定制支持或其他不适合 AGPL 义务的场景，可以联系项目作者获取单独商业授权。
+商业授权说明见 [`COMMERCIAL.md`](COMMERCIAL.md)。
+
+历史说明：Plutus 的旧版本曾以 MIT License 发布。已经基于旧版本取得 MIT 授权的使用者，
+其既有授权不因后续版本改为 AGPL 而自动失效；新的提交和新版本适用当前许可证。
